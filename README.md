@@ -8,6 +8,11 @@
 A pure Go implementation of [PCRE2](https://www.pcre.org/) (Perl Compatible Regular Expressions).
 No cgo, no external dependencies.
 
+An [experimental optional JIT module](jit/README.md) uses nyanjit to generate
+native matching and backtracking paths. The base package keeps its Go 1.25.3
+requirement and dependency-free interpreter. The optional module requires
+Go 1.26 and the included sibling-backend extension.
+
 ## Why?
 
 Go's standard `regexp` package uses the RE2 algorithm, which guarantees linear-time
