@@ -951,7 +951,10 @@ func (v *vm) runChild(start uint32, end, pos, target int) (*vm, bool) {
 		v.limitErr = ErrDepthLimit
 		return nil, false
 	}
-	sub := newVM(v.prog, v.subject, pos)
+	if v.child == nil {
+		v.child = newVM(v.prog, v.subject, pos)
+	}
+	sub := v.child
 	sub.resetAttempt(pos)
 	sub.subject, sub.flags = v.subject, v.flags
 	sub.matchStart, sub.startPos = v.matchStart, v.startPos

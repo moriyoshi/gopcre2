@@ -1,5 +1,7 @@
 package gopcre2
 
+import "unsafe"
+
 // Matcher owns reusable interpreter workspace. It is not safe for concurrent
 // use. Find returns borrowed offsets, valid until its next call.
 type Matcher struct {
@@ -51,7 +53,10 @@ func (re *Regexp) prepareVM(v *vm, subject string, start int) {
 	v.callout = re.callout
 }
 func (re *Regexp) acquireVM(subject string, start int) *vm {
-	v := newVM(re.prog, subject, start)
+	v, _ := re.pool.Get().(*vm)
+	if v == nil {
+		v = newVM(re.prog, subject, start)
+	}
 	re.prepareVM(v, subject, start)
 	return v
 }
@@ -63,8 +68,16 @@ func clearSubjects(v *vm) {
 	}
 }
 func (re *Regexp) releaseVM(v *vm) {
-	if v != nil {
-		clearSubjects(v)
+	if v == nil {
+		return
+	}
+	size := uintptr(0)
+	for s := v; s != nil; s = s.child {
+		size += uintptr(cap(s.stack.frames))*unsafe.Sizeof(stackFrame{}) + uintptr(cap(s.captures)+cap(s.loopPositions))*unsafe.Sizeof(int(0))
+	}
+	clearSubjects(v)
+	if size <= 1<<20 {
+		re.pool.Put(v)
 	}
 }
 

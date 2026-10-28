@@ -18,12 +18,14 @@ package gopcre2
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"unicode/utf8"
 )
 
 // Regexp is a compiled PCRE2 regular expression. It is safe for concurrent use
 // by multiple goroutines (matching does not modify the Regexp).
 type Regexp struct {
+	pool       sync.Pool
 	expr       string // original pattern
 	prog       *Program
 	flags      Flag
