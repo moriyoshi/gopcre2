@@ -1,0 +1,1 @@
+["docker", "run", "--rm", "--network", "none", "--memory", "2g", "--cap-add", "PERFMON", "--cpuset-cpus", "6", "-e", "GOMAXPROCS=1", "-v", "/tmp/gopcre2-laravel-before:/replay:ro", "-v", "/home/moriyoshi/src/gopcre2/benchmarks/laravel/testdata:/data:ro", "--entrypoint", "/replay", "php2go-native-sym:8.5.11", "-in", "/data/eloquent.jsonl.gz", "-iters", "200", "-samples", "3"]

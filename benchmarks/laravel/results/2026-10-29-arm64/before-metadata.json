@@ -1,0 +1,10 @@
+{
+  "cpu": 6,
+  "iterations": 200,
+  "samples": 3,
+  "binary_sha256": "d7aabf7e703dbd67eea0f6be514c631231a0170afe54da94d4340cb4c3876b36",
+  "corpus_sha256": {
+    "eloquent": "e30725df9c68e9a9fad299b53c19540bbdc3462339ccdda1c130351f7ffa6ab4",
+    "json": "1fb6eb851233c79c33006d12e4c1fdd191a9a4b30d626e2f0347495863337630"
+  }
+}

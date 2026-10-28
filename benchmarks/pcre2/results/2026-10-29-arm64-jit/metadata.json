@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-10-29T02:48:51+0900",
+  "cpu": 6,
+  "go": "go version go1.27.2 linux/arm64",
+  "samples": 7,
+  "jit_process_mode": "per-case",
+  "jit_sample_target": "20ms",
+  "native_sample_target": "3ms",
+  "implementation_sha256": "46a6fa2f5621e88f57f771c5774301b7d1cd06bd70d69c552195e6be6a83fceb",
+  "corpus_sha256": "5952eb4526bf0c1b442b2ef9d18854cd14c9a18fce4c186924e16614801abe38",
+  "encoding_fixture_sha256": "13536435e731a0f5e6a9a08e08111083429464e1f70ce7b38461c58451892517",
+  "native_executable_sha256": "28f94c896f2014436fca6d43e4ee650d27004f289347f821d118d2c8d8ef301a",
+  "nyanjit_head_at_build": "29aa5790dc7ccd5510dea0d79fafe8ccdb5347db",
+  "nyanjit_head": "29aa5790dc7ccd5510dea0d79fafe8ccdb5347db",
+  "nyanjit_live_head_at_finish": "29aa5790dc7ccd5510dea0d79fafe8ccdb5347db",
+  "nyanjit_source_mode": "committed snapshot plus named leaf-entry extension files",
+  "nyanjit_source_sha256": "0406e785f41f8a78f4d44acb1c8e30d36b4dead541214aff168fa80d21b91613",
+  "nyanjit_extension_sha256": {
+    "backend/execution/leaf_func.go": "0a7784437841d6786fff95645556c79612f4b2ee1687a0269fe03dcf070d2428",
+    "backend/execution/leaf_func_linux_test.go": "57a04d1d49155acfee8aa677468823e39c216816d3e9dee9606bb2736b929ea7"
+  },
+  "source_snapshot": "/tmp/gopcre2-handoff-pcre-final/sources-8g6uo74m",
+  "module_file": "/tmp/gopcre2-handoff-pcre-final/sources-8g6uo74m/jit.mod",
+  "nyanjit_live_dirty": true,
+  "implementation_archive_sha256": "965a3413ee8c8e2c3515d401b6bf68cff9fa5994b1a1e2c4a31172a787539d88"
+}

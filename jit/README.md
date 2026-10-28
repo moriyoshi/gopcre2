@@ -152,6 +152,11 @@ measurement. Metadata records the commit, source hashes and snapshot paths.
 Use `export_comparison.py <run-directory> <results-directory>` to save compact
 raw samples and per-case CSV tables.
 
+The [2026-10-29 php2go handoff follow-up](../benchmarks/laravel/README.md)
+adds a native-validated Laravel replay, interpreter workspace reuse and
+per-call matching options. It reports the seven fidelity fixes and the
+remaining PHP adapter and engine gaps separately.
+
 The companion's required backend extension is included for review as
 [`nyanjit-leaf-entry.patch`](nyanjit-leaf-entry.patch). It adds only the leased
 entry implementation and its lifetime tests to nyanjit revision

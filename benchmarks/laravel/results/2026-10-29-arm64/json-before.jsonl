@@ -1,0 +1,3 @@
+{"allocs_per_pass":536.005,"bytes_per_pass":1015104.08,"calls":130,"instructions_per_pass":2054143.09,"iterations":200,"matches_per_pass":35,"ns_per_pass":169477.705,"patterns":29,"sample":0}
+{"allocs_per_pass":536,"bytes_per_pass":1015104,"calls":130,"instructions_per_pass":2065670.095,"iterations":200,"matches_per_pass":35,"ns_per_pass":161267.9,"patterns":29,"sample":1}
+{"allocs_per_pass":536,"bytes_per_pass":1015104,"calls":130,"instructions_per_pass":2066165.16,"iterations":200,"matches_per_pass":35,"ns_per_pass":160633.73,"patterns":29,"sample":2}

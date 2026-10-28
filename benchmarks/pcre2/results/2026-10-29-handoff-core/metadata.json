@@ -1,0 +1,10 @@
+{
+  "cpu": 6,
+  "samples": 3,
+  "sample_target": "3ms",
+  "binary_sha256": {
+    "before": "1650be88a4eaa649c8f8c055137e720726af7c19877d87a3310ad0ed8d2e7dc8",
+    "after": "503299ac4fd8c428fa9439c324ba84a1ffdd906fcf00132308f9ad7b0247886a"
+  },
+  "corpus_sha256": "5952eb4526bf0c1b442b2ef9d18854cd14c9a18fce4c186924e16614801abe38"
+}
