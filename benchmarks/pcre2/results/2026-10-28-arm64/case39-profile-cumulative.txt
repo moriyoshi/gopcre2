@@ -1,0 +1,25 @@
+File: go-worker
+Build ID: f5e8134e9554c4efb4e96bcb176653547063a48c
+Type: cpu
+Time: 2026-10-28 13:56:19 JST
+Duration: 3.60s, Total samples = 3.60s (100.13%)
+Showing nodes accounting for 0.11s, 3.06% of 3.60s total
+Dropped 49 nodes (cum <= 0.02s)
+Showing top 16 nodes out of 124
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%      3.59s 99.72%  github.com/KarpelesLab/gopcre2.(*Regexp).FindStringSubmatchIndex
+         0     0%     0%      3.59s 99.72%  github.com/KarpelesLab/gopcre2.(*Regexp).findMatch
+         0     0%     0%      3.59s 99.72%  main.main
+         0     0%     0%      3.59s 99.72%  main.measure
+         0     0%     0%      3.59s 99.72%  runtime.main
+     0.02s  0.56%  0.56%      3.50s 97.22%  github.com/KarpelesLab/gopcre2.(*Regexp).newMatchVM
+     0.02s  0.56%  1.11%      3.48s 96.67%  github.com/KarpelesLab/gopcre2.newVM
+     0.01s  0.28%  1.39%      3.18s 88.33%  github.com/KarpelesLab/gopcre2.newBTStack (inline)
+     0.03s  0.83%  2.22%      3.07s 85.28%  runtime.mallocgc
+         0     0%  2.22%      2.85s 79.17%  runtime.makeslice
+         0     0%  2.22%      1.94s 53.89%  runtime.systemstack
+     0.01s  0.28%  2.50%      1.82s 50.56%  runtime.mallocgcSmallScanHeader
+     0.01s  0.28%  2.78%      1.41s 39.17%  runtime.(*mcache).nextFree
+     0.01s  0.28%  3.06%      1.39s 38.61%  runtime.(*mcache).refill
+         0     0%  3.06%      1.28s 35.56%  runtime.gcAssistAlloc
+         0     0%  3.06%      1.25s 34.72%  runtime.gcAssistAlloc.func2

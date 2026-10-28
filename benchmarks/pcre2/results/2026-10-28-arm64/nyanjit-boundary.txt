@@ -1,0 +1,39 @@
+goos: linux
+goarch: arm64
+pkg: gopcre2-nyanjit-probe
+BenchmarkBoundary/GoIndirect         	133950235	         1.791 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBoundary/GoIndirect         	133943728	         1.792 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBoundary/GoIndirect         	133972678	         1.791 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBoundary/GoIndirect         	133996866	         1.791 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBoundary/GoIndirect         	133967066	         1.793 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBoundary/GoIndirect         	133967414	         1.792 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBoundary/GoIndirect         	133999438	         1.791 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBoundary/ScalarFunc         	133906468	         1.792 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBoundary/ScalarFunc         	133840051	         1.794 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBoundary/ScalarFunc         	133855063	         1.793 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBoundary/ScalarFunc         	133852650	         1.793 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBoundary/ScalarFunc         	133854180	         1.793 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBoundary/ScalarFunc         	133831273	         1.793 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBoundary/ScalarFunc         	133739538	         1.794 ns/op	       0 B/op	       0 allocs/op
+BenchmarkBoundary/ScalarCodeCall     	 6282627	        43.55 ns/op	       8 B/op	       1 allocs/op
+BenchmarkBoundary/ScalarCodeCall     	 5418007	        44.88 ns/op	       8 B/op	       1 allocs/op
+BenchmarkBoundary/ScalarCodeCall     	 5603180	        43.74 ns/op	       8 B/op	       1 allocs/op
+BenchmarkBoundary/ScalarCodeCall     	 5636011	        44.12 ns/op	       8 B/op	       1 allocs/op
+BenchmarkBoundary/ScalarCodeCall     	 5465500	        44.63 ns/op	       8 B/op	       1 allocs/op
+BenchmarkBoundary/ScalarCodeCall     	 5457667	        43.88 ns/op	       8 B/op	       1 allocs/op
+BenchmarkBoundary/ScalarCodeCall     	 5604135	        44.24 ns/op	       8 B/op	       1 allocs/op
+BenchmarkBoundary/PointerFunc        	 1374769	       175.9 ns/op	      56 B/op	       3 allocs/op
+BenchmarkBoundary/PointerFunc        	 1358947	       176.7 ns/op	      56 B/op	       3 allocs/op
+BenchmarkBoundary/PointerFunc        	 1348044	       178.2 ns/op	      56 B/op	       3 allocs/op
+BenchmarkBoundary/PointerFunc        	 1340293	       179.1 ns/op	      56 B/op	       3 allocs/op
+BenchmarkBoundary/PointerFunc        	 1330963	       180.2 ns/op	      56 B/op	       3 allocs/op
+BenchmarkBoundary/PointerFunc        	 1326832	       181.1 ns/op	      56 B/op	       3 allocs/op
+BenchmarkBoundary/PointerFunc        	 1328259	       180.8 ns/op	      56 B/op	       3 allocs/op
+BenchmarkBoundary/PointerCodeCallWords         	 2737998	        87.78 ns/op	     128 B/op	       1 allocs/op
+BenchmarkBoundary/PointerCodeCallWords         	 2734288	        87.68 ns/op	     128 B/op	       1 allocs/op
+BenchmarkBoundary/PointerCodeCallWords         	 2623450	        88.99 ns/op	     128 B/op	       1 allocs/op
+BenchmarkBoundary/PointerCodeCallWords         	 2741586	        87.59 ns/op	     128 B/op	       1 allocs/op
+BenchmarkBoundary/PointerCodeCallWords         	 2754003	        87.22 ns/op	     128 B/op	       1 allocs/op
+BenchmarkBoundary/PointerCodeCallWords         	 2747451	        87.56 ns/op	     128 B/op	       1 allocs/op
+BenchmarkBoundary/PointerCodeCallWords         	 2752026	        87.35 ns/op	     128 B/op	       1 allocs/op
+PASS
