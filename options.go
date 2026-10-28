@@ -44,3 +44,5 @@ const (
 	// DefaultHeapLimit is the default maximum heap memory for the backtrack stack (bytes).
 	DefaultHeapLimit = 20 * 1024 * 1024 // 20 MB
 )
+
+const newlineFlags = NewlineCR | NewlineLF | NewlineCRLF | NewlineAny | NewlineAnyCRLF | NewlineNUL

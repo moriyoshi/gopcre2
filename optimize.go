@@ -7,6 +7,12 @@ func optimize(prog *Program) {
 	detectAnchor(prog)
 	extractPrefix(prog)
 	computeMinLen(prog)
+	if prog.pattern != nil {
+		prog.MinLen = prog.pattern.MinBytes()
+	}
+	if prog.Flags&Anchored != 0 {
+		prog.AnchorStart = true
+	}
 }
 
 // detectAnchor checks if the pattern is anchored at the start.
@@ -15,17 +21,21 @@ func detectAnchor(prog *Program) {
 		return
 	}
 	// Walk from start looking for the first consuming instruction
+	flags := prog.Flags
 	for pc := prog.Start; pc < len(prog.Inst); pc++ {
 		inst := &prog.Inst[pc]
 		switch inst.Op {
-		case OpCaptureStart, OpCaptureEnd, OpNop, OpSetFlags:
+		case OpCaptureStart, OpCaptureEnd, OpNop:
+			continue
+		case OpSetFlags:
+			flags = (flags | Flag(inst.N)) &^ Flag(inst.N2)
 			continue
 		case OpAssertBeginText:
 			prog.AnchorStart = true
 			return
 		case OpAssertBeginLine:
 			// ^ without multiline acts like \A
-			if prog.Flags&Multiline == 0 {
+			if flags&Multiline == 0 {
 				prog.AnchorStart = true
 			}
 			return
@@ -46,7 +56,11 @@ func extractPrefix(prog *Program) {
 			continue
 		case OpRune:
 			if len(inst.Runes) == 1 {
-				prefix.WriteRune(inst.Runes[0])
+				if prog.Flags&UTF != 0 {
+					prefix.WriteRune(inst.Runes[0])
+				} else {
+					prefix.WriteByte(byte(inst.Runes[0]))
+				}
 				continue
 			}
 			goto done

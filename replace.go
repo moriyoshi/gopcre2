@@ -3,7 +3,6 @@ package gopcre2
 import (
 	"strconv"
 	"strings"
-	"unicode/utf8"
 )
 
 // ReplaceAllString returns a copy of src, replacing matches of the pattern
@@ -33,7 +32,7 @@ func (re *Regexp) ReplaceAllString(src, repl string) string {
 				if pos >= len(src) {
 					break
 				}
-				_, size := utf8.DecodeRuneInString(src[pos:])
+				_, size := decodeCharacter(src[pos:], re.flags)
 				buf.WriteString(src[pos : pos+size])
 				pos += size
 				continue
@@ -76,7 +75,7 @@ func (re *Regexp) ReplaceAllStringFunc(src string, repl func(string) string) str
 				if pos >= len(src) {
 					break
 				}
-				_, size := utf8.DecodeRuneInString(src[pos:])
+				_, size := decodeCharacter(src[pos:], re.flags)
 				buf.WriteString(src[pos : pos+size])
 				pos += size
 				continue

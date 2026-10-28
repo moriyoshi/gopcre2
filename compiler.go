@@ -1,6 +1,9 @@
 package gopcre2
 
-import "unicode"
+import (
+	"strings"
+	"unicode"
+)
 
 // compiler compiles an AST into a Program (bytecode).
 type compiler struct {
@@ -44,6 +47,15 @@ func (c *compiler) pc() int {
 
 // Compile compiles an AST into a Program.
 func (c *compiler) Compile(ast *Node) (*Program, error) {
+	c.prog.pattern = analyzePattern(ast, c.flags)
+	// Capture declarations exist even when their group is repeated zero times.
+	c.prog.CapNames = append([]string(nil), c.prog.pattern.names...)
+	for idx, name := range c.prog.CapNames {
+		if name != "" {
+			c.prog.NameToGroup[name] = append(c.prog.NameToGroup[name], idx)
+		}
+	}
+	ast = c.prog.pattern.root.node
 	// Emit capture 0 start (whole match)
 	c.emit(Inst{Op: OpCaptureStart, N: 0})
 	if err := c.compileNode(ast); err != nil {
@@ -68,7 +80,7 @@ func (c *compiler) wireSequential() {
 		switch inst.Op {
 		case OpMatch, OpFail, OpVerbFail, OpAccept:
 			// terminal — no Out needed
-		case OpJump, OpSplit, OpSplitLazy:
+		case OpJump, OpSplit, OpSplitLazy, OpLoopEnd:
 			// already wired
 		default:
 			if inst.Out == 0 && i+1 < len(c.prog.Inst) {
@@ -273,11 +285,26 @@ func (c *compiler) compileRepeatInner(child *Node, min, max int, greedy bool) er
 		c.emit(Inst{Op: Opcode(op)})
 
 		bodyStart := uint32(c.pc())
+		guard := !consumesOnSuccess(child)
+		loop := 0
+		if guard {
+			loop = c.prog.numLoops
+			c.prog.numLoops++
+			c.emit(Inst{Op: OpLoopBegin, N: loop})
+		}
 		if err := c.compileNode(child); err != nil {
 			return err
 		}
-		c.emit(Inst{Op: OpJump, Out: uint32(splitPC)})
+		endPC := 0
+		if guard {
+			endPC = c.emit(Inst{Op: OpLoopEnd, N: loop, Out: uint32(splitPC)})
+		} else {
+			c.emit(Inst{Op: OpJump, Out: uint32(splitPC)})
+		}
 		afterLoop := uint32(c.pc())
+		if guard {
+			c.patchArg(endPC, afterLoop)
+		}
 
 		if greedy {
 			c.patch(splitPC, bodyStart)
@@ -324,6 +351,37 @@ func (c *compiler) compileRepeatInner(child *Node, min, max int, greedy bool) er
 	return nil
 }
 
+// Only iterations which can finish without consuming input need a progress
+// checkpoint. Avoid extra frames (and a tighter effective heap limit) for
+// ordinary consuming loops. An early ACCEPT returns before reaching LoopEnd.
+func consumesOnSuccess(n *Node) bool {
+	switch n.Kind {
+	case NdLiteral, NdDot, NdCharClass, NdCharType, NdProperty:
+		return true
+	case NdConcat:
+		for _, ch := range n.Children {
+			if consumesOnSuccess(ch) {
+				return true
+			}
+		}
+	case NdAlternate:
+		if len(n.Children) == 0 {
+			return false
+		}
+		for _, ch := range n.Children {
+			if !consumesOnSuccess(ch) {
+				return false
+			}
+		}
+		return true
+	case NdCapture, NdNamedCapture, NdNonCapture, NdAtomicGroup, NdBranchReset, NdInlineOption:
+		return len(n.Children) > 0 && consumesOnSuccess(n.Children[0])
+	case NdRepeat:
+		return n.Min > 0 && consumesOnSuccess(n.Children[0])
+	}
+	return false
+}
+
 func (c *compiler) compileCapture(node *Node) error {
 	idx := node.Index
 	// Ensure CapNames has room
@@ -350,7 +408,6 @@ func (c *compiler) compileNamedCapture(node *Node) error {
 		c.prog.CapNames = append(c.prog.CapNames, "")
 	}
 	c.prog.CapNames[idx] = node.Name
-	c.prog.NameToGroup[node.Name] = append(c.prog.NameToGroup[node.Name], idx)
 
 	entry := c.pc()
 	c.emit(Inst{Op: OpCaptureStart, N: idx})
@@ -366,75 +423,28 @@ func (c *compiler) compileNamedCapture(node *Node) error {
 }
 
 func (c *compiler) compileCharClass(node *Node) error {
-	hasChildren := len(node.Children) > 0
-
-	if !hasChildren {
-		// Simple char class with only rune ranges
-		var runes []rune
-		for _, rr := range node.Ranges {
-			runes = append(runes, rr.Lo, rr.Hi)
-		}
-		c.emit(Inst{Op: OpCharClass, Runes: runes, Negate: node.Negate})
-		return nil
-	}
-
-	// Complex char class with char types and/or properties.
-	// Compile as: a single check instruction that checks ranges + children.
-	// We expand char types to ranges, and store property names for VM lookup.
 	var runes []rune
 	for _, rr := range node.Ranges {
 		runes = append(runes, rr.Lo, rr.Hi)
 	}
-
+	var types []CharTypeKind
 	var propertyNames []string
 	for _, child := range node.Children {
 		switch child.Kind {
 		case NdCharType:
-			rr := charTypeToRanges(child.CharType)
-			for _, r := range rr {
-				runes = append(runes, r.Lo, r.Hi)
-			}
-			// Also handle negated char types by adding a property-like check
-			if isNegatedCharType(child.CharType) {
-				// Negated char types in a class are handled differently
-				// For now, we'll just include the positive ranges and
-				// the negation is implicit in the class being [^\d] etc.
-			}
+			types = append(types, child.CharType)
 		case NdProperty:
+			name := child.Name
 			if child.Negate {
-				propertyNames = append(propertyNames, "^"+child.Name)
-			} else {
-				propertyNames = append(propertyNames, child.Name)
+				name = "^" + name
 			}
+			propertyNames = append(propertyNames, name)
 		}
 	}
-
-	if len(propertyNames) == 0 {
-		// Only rune ranges (char types expanded)
-		c.emit(Inst{Op: OpCharClass, Runes: runes, Negate: node.Negate})
-		return nil
-	}
-
-	// Emit a composite char class that checks both ranges and properties
-	// Store property names as semicolon-separated string
-	propStr := ""
-	for i, name := range propertyNames {
-		if i > 0 {
-			propStr += ";"
-		}
-		propStr += name
-	}
-	c.emit(Inst{Op: OpCharClass, Runes: runes, Negate: node.Negate, Str: propStr})
+	// Preserve shorthand predicates: their meaning depends on UCP, and a
+	// negated child is a union member rather than negation of the whole class.
+	c.emit(Inst{Op: OpCharClass, Runes: runes, CharTypes: types, Negate: node.Negate, Str: strings.Join(propertyNames, ";")})
 	return nil
-}
-
-func isNegatedCharType(ct CharTypeKind) bool {
-	switch ct {
-	case CharTypeNonDigit, CharTypeNonWord, CharTypeNonSpace,
-		CharTypeNonHSpace, CharTypeNonVSpace:
-		return true
-	}
-	return false
 }
 
 func (c *compiler) compileCharType(node *Node) error {
@@ -705,30 +715,10 @@ func (c *compiler) compileInlineOption(node *Node) error {
 	return nil
 }
 
-// charTypeToRanges converts a character type to ASCII rune ranges.
-func charTypeToRanges(ct CharTypeKind) []RuneRange {
-	switch ct {
-	case CharTypeDigit:
-		return []RuneRange{{'0', '9'}}
-	case CharTypeWord:
-		return []RuneRange{{'0', '9'}, {'A', 'Z'}, {'_', '_'}, {'a', 'z'}}
-	case CharTypeSpace:
-		return []RuneRange{{'\t', '\r'}, {' ', ' '}}
-	case CharTypeHSpace:
-		return []RuneRange{{'\t', '\t'}, {' ', ' '}, {0xA0, 0xA0}, {0x1680, 0x1680},
-			{0x2000, 0x200A}, {0x202F, 0x202F}, {0x205F, 0x205F}, {0x3000, 0x3000}}
-	case CharTypeVSpace:
-		return []RuneRange{{'\n', '\r'}, {0x85, 0x85}, {0x2028, 0x2029}}
-	default:
-		// Negated types are handled in the VM
-		return nil
-	}
-}
-
 // isWordChar reports whether r is a word character (\w).
 func isWordChar(r rune, ucp bool) bool {
 	if ucp {
-		return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_'
+		return unicode.IsLetter(r) || unicode.IsNumber(r) || unicode.Is(unicode.Mn, r) || unicode.Is(unicode.Pc, r)
 	}
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_'
 }

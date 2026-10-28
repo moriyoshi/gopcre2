@@ -59,6 +59,7 @@ func compile(pattern string, flags Flag) (*Regexp, error) {
 		return nil, err
 	}
 
+	flags = lex.flags
 	p := newParser(tokens, flags)
 	ast, err := p.Parse()
 	if err != nil {
@@ -171,21 +172,32 @@ func (re *Regexp) execAt(subject string, startPos int) *vm {
 
 // findMatch searches for the first match in subject starting from startPos.
 func (re *Regexp) findMatch(subject string, startPos int) *vm {
+	if re.flags&UTF != 0 && (!utf8.ValidString(subject) || (startPos > 0 && startPos < len(subject) && !utf8.RuneStart(subject[startPos]))) {
+		return nil
+	}
+	if startPos < 0 || startPos > len(subject) || (re.flags&NoStartOptimize == 0 && len(subject)-startPos < re.prog.MinLen) {
+		return nil
+	}
 	// If pattern is anchored, only try at startPos
 	if re.prog.AnchorStart {
 		return re.execAt(subject, startPos)
 	}
 
 	// Fast path: if we have a literal prefix, use strings.Index to skip ahead
-	if re.prog.Prefix != "" && len(re.prog.Prefix) > 1 {
+	if re.flags&NoStartOptimize == 0 && re.prog.Prefix != "" && len(re.prog.Prefix) > 1 {
 		i := startPos
+		var v *vm
 		for {
 			idx := strings.Index(subject[i:], re.prog.Prefix)
 			if idx < 0 {
 				return nil
 			}
 			pos := i + idx
-			v := re.newMatchVM(subject, pos)
+			if v == nil {
+				v = re.newMatchVM(subject, pos)
+			} else {
+				v.resetAttempt(pos)
+			}
 			v.startPos = startPos
 			if v.exec() {
 				return v
@@ -193,14 +205,15 @@ func (re *Regexp) findMatch(subject string, startPos int) *vm {
 			if pos >= len(subject) {
 				break
 			}
-			_, size := utf8.DecodeRuneInString(subject[pos:])
+			_, size := decodeCharacter(subject[pos:], re.flags)
 			i = pos + size
 		}
 		return nil
 	}
 
+	v := re.newMatchVM(subject, startPos)
 	for i := startPos; i <= len(subject); {
-		v := re.newMatchVM(subject, i)
+		v.resetAttempt(i)
 		v.startPos = startPos // \G anchors to the search start, not the attempt position
 		if v.exec() {
 			return v
@@ -208,10 +221,50 @@ func (re *Regexp) findMatch(subject string, startPos int) *vm {
 		if i >= len(subject) {
 			break
 		}
-		_, size := utf8.DecodeRuneInString(subject[i:])
+		_, size := decodeCharacter(subject[i:], re.flags)
 		i += size
 	}
 	return nil
+}
+
+// resetAttempt reuses captures and stack storage across candidate positions.
+// Limits and callbacks belong to the search; transient execution state does not.
+func (v *vm) resetAttempt(pos int) {
+	v.pos = pos
+	v.matchStart = pos
+	v.steps = 0
+	v.depth = 0
+	v.mark = ""
+	v.limitErr = nil
+	v.flags = v.prog.Flags
+	v.nextSubPC = 0
+	v.backtrackPC = 0
+	for i := range v.captures {
+		v.captures[i] = -1
+	}
+	clear(v.stack.frames)
+	v.stack.frames = v.stack.frames[:0]
+	v.stack.heapUsed = 0
+	for i := range v.loopPositions {
+		v.loopPositions[i] = -1
+	}
+}
+
+func (v *vm) saveProgress(slot int) {
+	if v.loopPositions == nil {
+		v.loopPositions = make([]int, v.prog.numLoops)
+		for i := range v.loopPositions {
+			v.loopPositions[i] = -1
+		}
+	}
+	v.stack.push(stackFrame{kind: frameProgress, capSlot: slot, capVal: v.loopPositions[slot]})
+	v.loopPositions[slot] = v.pos
+}
+
+func (v *vm) loopProgressed(slot int) bool {
+	// A subroutine can enter a group whose enclosing repeat was never entered
+	// in this VM. That repeat has no active iteration to continue.
+	return slot < len(v.loopPositions) && v.loopPositions[slot] >= 0 && v.pos != v.loopPositions[slot]
 }
 
 // Dump returns a human-readable representation of the compiled program.
