@@ -11,10 +11,10 @@ import (
 func (re *Regexp) ReplaceAllString(src, repl string) string {
 	var buf strings.Builder
 	pos := 0
-	prevMatch := -1
-
+	it := re.iterate(src, false)
+	defer it.close()
 	for {
-		v := re.findMatch(src, pos)
+		v := it.next()
 		if v == nil {
 			break
 		}
@@ -27,21 +27,7 @@ func (re *Regexp) ReplaceAllString(src, repl string) string {
 		// Expand the replacement template
 		buf.WriteString(re.expandRepl(repl, src, v.captures))
 
-		if matchEnd == matchStart {
-			if matchEnd == prevMatch {
-				if pos >= len(src) {
-					break
-				}
-				_, size := decodeCharacter(src[pos:], re.flags)
-				buf.WriteString(src[pos : pos+size])
-				pos += size
-				continue
-			}
-			pos = matchEnd
-		} else {
-			pos = matchEnd
-		}
-		prevMatch = matchEnd
+		pos = matchEnd
 	}
 	buf.WriteString(src[pos:])
 	return buf.String()
@@ -57,10 +43,10 @@ func (re *Regexp) ReplaceAll(src, repl []byte) []byte {
 func (re *Regexp) ReplaceAllStringFunc(src string, repl func(string) string) string {
 	var buf strings.Builder
 	pos := 0
-	prevMatch := -1
-
+	it := re.iterate(src, false)
+	defer it.close()
 	for {
-		v := re.findMatch(src, pos)
+		v := it.next()
 		if v == nil {
 			break
 		}
@@ -70,21 +56,7 @@ func (re *Regexp) ReplaceAllStringFunc(src string, repl func(string) string) str
 		buf.WriteString(src[pos:matchStart])
 		buf.WriteString(repl(src[matchStart:matchEnd]))
 
-		if matchEnd == matchStart {
-			if matchEnd == prevMatch {
-				if pos >= len(src) {
-					break
-				}
-				_, size := decodeCharacter(src[pos:], re.flags)
-				buf.WriteString(src[pos : pos+size])
-				pos += size
-				continue
-			}
-			pos = matchEnd
-		} else {
-			pos = matchEnd
-		}
-		prevMatch = matchEnd
+		pos = matchEnd
 	}
 	buf.WriteString(src[pos:])
 	return buf.String()

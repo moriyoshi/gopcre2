@@ -28,7 +28,12 @@ type CalloutBlock struct {
 
 // MatchString reports whether the string s contains any match of the pattern.
 func (re *Regexp) MatchString(s string) bool {
-	return re.findMatch(s, 0) != nil
+	v := re.findMatch(s, 0)
+	if v == nil {
+		return false
+	}
+	re.releaseVM(v)
+	return true
 }
 
 // Match reports whether the byte slice b contains any match of the pattern.
@@ -42,6 +47,7 @@ func (re *Regexp) Match(b []byte) bool {
 // If there is no match, the return value is an empty string.
 func (re *Regexp) FindString(s string) string {
 	v := re.findMatch(s, 0)
+	defer re.releaseVM(v)
 	if v == nil {
 		return ""
 	}
@@ -52,6 +58,7 @@ func (re *Regexp) FindString(s string) string {
 func (re *Regexp) Find(b []byte) []byte {
 	s := string(b)
 	v := re.findMatch(s, 0)
+	defer re.releaseVM(v)
 	if v == nil {
 		return nil
 	}
@@ -64,6 +71,7 @@ func (re *Regexp) Find(b []byte) []byte {
 // location of the leftmost match in s. Returns nil if no match.
 func (re *Regexp) FindStringIndex(s string) []int {
 	v := re.findMatch(s, 0)
+	defer re.releaseVM(v)
 	if v == nil {
 		return nil
 	}
@@ -82,6 +90,7 @@ func (re *Regexp) FindIndex(b []byte) []int {
 // leftmost match and its submatches. A nil return indicates no match.
 func (re *Regexp) FindStringSubmatch(s string) []string {
 	v := re.findMatch(s, 0)
+	defer re.releaseVM(v)
 	if v == nil {
 		return nil
 	}
@@ -102,6 +111,7 @@ func (re *Regexp) FindStringSubmatch(s string) []string {
 func (re *Regexp) FindSubmatch(b []byte) [][]byte {
 	s := string(b)
 	v := re.findMatch(s, 0)
+	defer re.releaseVM(v)
 	if v == nil {
 		return nil
 	}
@@ -123,6 +133,7 @@ func (re *Regexp) FindSubmatch(b []byte) [][]byte {
 // location of the leftmost match and its submatches.
 func (re *Regexp) FindStringSubmatchIndex(s string) []int {
 	v := re.findMatch(s, 0)
+	defer re.releaseVM(v)
 	if v == nil {
 		return nil
 	}
@@ -147,13 +158,13 @@ func (re *Regexp) FindAllString(s string, n int) []string {
 		return nil
 	}
 	var result []string
-	pos := 0
-	prevMatch := -1
+	it := re.iterate(s, false)
+	defer it.close()
 	for {
 		if n >= 0 && len(result) >= n {
 			break
 		}
-		v := re.findMatch(s, pos)
+		v := it.next()
 		if v == nil {
 			break
 		}
@@ -162,22 +173,6 @@ func (re *Regexp) FindAllString(s string, n int) []string {
 
 		result = append(result, s[matchStart:matchEnd])
 
-		// Advance position
-		if matchEnd == matchStart {
-			// Empty match — advance by one rune to avoid infinite loop
-			if matchEnd == prevMatch {
-				if pos >= len(s) {
-					break
-				}
-				_, size := decodeCharacter(s[pos:], re.flags)
-				pos += size
-				continue
-			}
-			pos = matchEnd
-		} else {
-			pos = matchEnd
-		}
-		prevMatch = matchEnd
 	}
 	return result
 }
@@ -204,13 +199,13 @@ func (re *Regexp) FindAllStringIndex(s string, n int) [][]int {
 		return nil
 	}
 	var result [][]int
-	pos := 0
-	prevMatch := -1
+	it := re.iterate(s, false)
+	defer it.close()
 	for {
 		if n >= 0 && len(result) >= n {
 			break
 		}
-		v := re.findMatch(s, pos)
+		v := it.next()
 		if v == nil {
 			break
 		}
@@ -219,20 +214,6 @@ func (re *Regexp) FindAllStringIndex(s string, n int) [][]int {
 
 		result = append(result, []int{matchStart, matchEnd})
 
-		if matchEnd == matchStart {
-			if matchEnd == prevMatch {
-				if pos >= len(s) {
-					break
-				}
-				_, size := decodeCharacter(s[pos:], re.flags)
-				pos += size
-				continue
-			}
-			pos = matchEnd
-		} else {
-			pos = matchEnd
-		}
-		prevMatch = matchEnd
 	}
 	return result
 }
@@ -250,18 +231,16 @@ func (re *Regexp) FindAllStringSubmatch(s string, n int) [][]string {
 		return nil
 	}
 	var result [][]string
-	pos := 0
-	prevMatch := -1
+	it := re.iterate(s, false)
+	defer it.close()
 	for {
 		if n >= 0 && len(result) >= n {
 			break
 		}
-		v := re.findMatch(s, pos)
+		v := it.next()
 		if v == nil {
 			break
 		}
-		matchStart := v.captures[0]
-		matchEnd := v.captures[1]
 
 		numGroups := re.prog.NumCapture + 1
 		submatch := make([]string, numGroups)
@@ -274,20 +253,6 @@ func (re *Regexp) FindAllStringSubmatch(s string, n int) [][]string {
 		}
 		result = append(result, submatch)
 
-		if matchEnd == matchStart {
-			if matchEnd == prevMatch {
-				if pos >= len(s) {
-					break
-				}
-				_, size := decodeCharacter(s[pos:], re.flags)
-				pos += size
-				continue
-			}
-			pos = matchEnd
-		} else {
-			pos = matchEnd
-		}
-		prevMatch = matchEnd
 	}
 	return result
 }
@@ -320,38 +285,22 @@ func (re *Regexp) FindAllStringSubmatchIndex(s string, n int) [][]int {
 		return nil
 	}
 	var result [][]int
-	pos := 0
-	prevMatch := -1
+	it := re.iterate(s, false)
+	defer it.close()
 	for {
 		if n >= 0 && len(result) >= n {
 			break
 		}
-		v := re.findMatch(s, pos)
+		v := it.next()
 		if v == nil {
 			break
 		}
-		matchStart := v.captures[0]
-		matchEnd := v.captures[1]
 
 		numSlots := (re.prog.NumCapture + 1) * 2
 		indices := make([]int, numSlots)
 		copy(indices, v.captures[:numSlots])
 		result = append(result, indices)
 
-		if matchEnd == matchStart {
-			if matchEnd == prevMatch {
-				if pos >= len(s) {
-					break
-				}
-				_, size := decodeCharacter(s[pos:], re.flags)
-				pos += size
-				continue
-			}
-			pos = matchEnd
-		} else {
-			pos = matchEnd
-		}
-		prevMatch = matchEnd
 	}
 	return result
 }

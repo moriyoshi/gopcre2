@@ -23,6 +23,7 @@ import (
 //   - \E       : end case conversion
 func (re *Regexp) Substitute(subject, replacement string) (string, error) {
 	v := re.findMatch(subject, 0)
+	defer re.releaseVM(v)
 	if v == nil {
 		return subject, nil
 	}
@@ -43,10 +44,10 @@ func (re *Regexp) Substitute(subject, replacement string) (string, error) {
 func (re *Regexp) SubstituteAll(subject, replacement string) (string, error) {
 	var buf strings.Builder
 	pos := 0
-	prevMatch := -1
-
+	it := re.iterate(subject, true)
+	defer it.close()
 	for {
-		v := re.findMatch(subject, pos)
+		v := it.next()
 		if v == nil {
 			break
 		}
@@ -56,24 +57,10 @@ func (re *Regexp) SubstituteAll(subject, replacement string) (string, error) {
 		buf.WriteString(subject[pos:matchStart])
 		buf.WriteString(re.expandPCRE2Repl(replacement, subject, v.captures))
 
-		if matchEnd == matchStart {
-			if matchEnd == prevMatch {
-				if pos >= len(subject) {
-					break
-				}
-				_, size := decodeCharacter(subject[pos:], re.flags)
-				buf.WriteString(subject[pos : pos+size])
-				pos += size
-				continue
-			}
-			pos = matchEnd
-		} else {
-			pos = matchEnd
-		}
-		prevMatch = matchEnd
+		pos = matchEnd
 	}
 	buf.WriteString(subject[pos:])
-	return buf.String(), nil
+	return buf.String(), it.err
 }
 
 type caseMode uint8

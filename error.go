@@ -26,6 +26,8 @@ func (e *MatchError) Error() string {
 }
 
 var (
+	ErrInvalidUTF   = errors.New("gopcre2: invalid UTF-8 subject or offset")
+	ErrInvalidMatch = errors.New("gopcre2: match starts after its end")
 	// ErrMatchLimit is returned when the match step limit is exceeded.
 	ErrMatchLimit = errors.New("gopcre2: match limit exceeded")
 

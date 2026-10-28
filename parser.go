@@ -210,7 +210,11 @@ func (p *parser) parseAtom() (*Node, error) {
 
 	case TokBackref:
 		p.advance()
-		return &Node{Kind: NdBackref, Index: tok.Num, Name: tok.Str, Pos: tok.Pos}, nil
+		index := tok.Num
+		if index < 0 {
+			index = p.captures + index + 1
+		}
+		return &Node{Kind: NdBackref, Index: index, Name: tok.Str, Pos: tok.Pos}, nil
 
 	case TokRecurse:
 		p.advance()
@@ -242,7 +246,10 @@ func (p *parser) parseAtom() (*Node, error) {
 
 	case TokInlineOption:
 		p.advance()
+		savedFlags := p.flags
+		p.flags = (p.flags | tok.Flags) &^ tok.UnsetFlags
 		if tok.HasColon {
+			defer func() { p.flags = savedFlags }()
 			// Scoped options (?i:...)
 			inner, err := p.parseAlternation()
 			if err != nil {
@@ -306,6 +313,9 @@ func (p *parser) parseAtom() (*Node, error) {
 }
 
 func (p *parser) parseCapture(tok Token) (*Node, error) {
+	savedFlags := p.flags
+	defer func() { p.flags = savedFlags }()
+
 	p.advance() // skip TokGroupOpen
 	p.captures++
 	idx := p.captures
@@ -320,6 +330,9 @@ func (p *parser) parseCapture(tok Token) (*Node, error) {
 }
 
 func (p *parser) parseNonCapture(tok Token) (*Node, error) {
+	savedFlags := p.flags
+	defer func() { p.flags = savedFlags }()
+
 	p.advance()
 	inner, err := p.parseAlternation()
 	if err != nil {
@@ -332,6 +345,9 @@ func (p *parser) parseNonCapture(tok Token) (*Node, error) {
 }
 
 func (p *parser) parseNamedCapture(tok Token) (*Node, error) {
+	savedFlags := p.flags
+	defer func() { p.flags = savedFlags }()
+
 	p.advance()
 	p.captures++
 	idx := p.captures
@@ -346,6 +362,9 @@ func (p *parser) parseNamedCapture(tok Token) (*Node, error) {
 }
 
 func (p *parser) parseAtomicGroup(tok Token) (*Node, error) {
+	savedFlags := p.flags
+	defer func() { p.flags = savedFlags }()
+
 	p.advance()
 	inner, err := p.parseAlternation()
 	if err != nil {
@@ -358,6 +377,9 @@ func (p *parser) parseAtomicGroup(tok Token) (*Node, error) {
 }
 
 func (p *parser) parseLookaround(tok Token, kind NodeKind) (*Node, error) {
+	savedFlags := p.flags
+	defer func() { p.flags = savedFlags }()
+
 	p.advance()
 	inner, err := p.parseAlternation()
 	if err != nil {
@@ -370,6 +392,9 @@ func (p *parser) parseLookaround(tok Token, kind NodeKind) (*Node, error) {
 }
 
 func (p *parser) parseBranchReset(tok Token) (*Node, error) {
+	savedFlags := p.flags
+	defer func() { p.flags = savedFlags }()
+
 	p.advance()
 	inner, err := p.parseAlternation()
 	if err != nil {
@@ -382,6 +407,9 @@ func (p *parser) parseBranchReset(tok Token) (*Node, error) {
 }
 
 func (p *parser) parseConditional(tok Token) (*Node, error) {
+	savedFlags := p.flags
+	defer func() { p.flags = savedFlags }()
+
 	p.advance() // skip TokConditional
 
 	// Parse condition
