@@ -14,6 +14,7 @@ func (e *Expression) Name() string { return e.node.Name }
 // Expression is a read-only view of a parsed expression. Flags reports the
 // effective options at this expression, including preceding inline options.
 type Expression struct {
+	start    startInfo
 	node     *Node
 	children []*Expression
 	flags    Flag
@@ -114,6 +115,7 @@ func analyzePattern(root *Node, flags Flag) *Pattern {
 			// match before a later consuming suffix is reached.
 			safeMin = false
 		}
+		e.start = analyzeStart(e)
 		next := f
 		if n.Kind == NdInlineOption && len(n.Children) == 0 {
 			next = innerFlags

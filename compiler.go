@@ -217,7 +217,12 @@ func (c *compiler) compileAlternate(node *Node) error {
 	// For each alternative except the last, emit a split
 	var jumpPatches []int
 	for i := 0; i < n-1; i++ {
-		splitPC := c.emit(Inst{Op: OpSplit})
+		first, rest := 0, 0
+		if c.flags&NoStartOptimize == 0 {
+			first = c.startFilter(node.Children[i])
+			rest = c.startFilter(&Node{Kind: NdAlternate, Children: node.Children[i+1:]})
+		}
+		splitPC := c.emit(Inst{Op: OpSplit, First: first, Rest: rest})
 		altStart := uint32(c.pc())
 		c.patch(splitPC, altStart)
 
@@ -749,4 +754,18 @@ func isWordChar(r rune, ucp bool) bool {
 		return unicode.IsLetter(r) || unicode.IsNumber(r) || unicode.Is(unicode.Mn, r) || unicode.Is(unicode.Pc, r)
 	}
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_'
+}
+
+func (c *compiler) startFilter(node *Node) int {
+	set, known := analyzePattern(node, c.flags).Root().StartBytes()
+	if !known {
+		return 0
+	}
+	for i, old := range c.prog.StartSets {
+		if old == set {
+			return i + 1
+		}
+	}
+	c.prog.StartSets = append(c.prog.StartSets, set)
+	return len(c.prog.StartSets)
 }
