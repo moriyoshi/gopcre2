@@ -1,0 +1,25 @@
+{
+  "timestamp": "2026-10-28T13:52:07+0900",
+  "platform": "Linux-7.0.0-1019-nvidia-aarch64-with-glibc2.39",
+  "cpu": 7,
+  "go": "go version go1.27.2 linux/arm64",
+  "gcc": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "gopcre2_revision": "8830ee9776e3053f767192b2680fb79be28c7798",
+  "pcre2_revision": "6f9d7c1373262c541324a16a358785b33ef116cf",
+  "corpus_sha256": "0517761272a5122c7d4bde833b16603a8b0887bfbcca1e4bcb8c4a2c666e3b95",
+  "samples": 7,
+  "minimum_sample_ms": 3,
+  "go_api": "FindStringSubmatchIndex",
+  "gc": "enabled",
+  "gomaxprocs": 1,
+  "native_modes": [
+    "pcre2_match + PCRE2_NO_JIT",
+    "pcre2_jit_match",
+    "pcre2_match + JIT"
+  ],
+  "cpu_name": "ARM Cortex-X925",
+  "cpu_max_khz": 3900000,
+  "governor": "performance",
+  "native_cflags": "-O3 -DNDEBUG; static 8-bit library; JIT and Unicode enabled",
+  "pcre2_sljit_revision": "de0259c7aaf36aa40cba8014f3fad3edde9307f9"
+}

@@ -1,0 +1,24 @@
+{
+  "total": 706,
+  "counts": {
+    "measured": 368,
+    "capture_mismatch": 195,
+    "go_compile_error": 44,
+    "unsupported_compile_options": 1,
+    "start_offset_api": 16,
+    "unsupported_match_options": 34,
+    "native_error_or_disagreement": 6,
+    "go_or_native_timeout": 26,
+    "upstream_no_comparison": 3,
+    "not_8bit": 13
+  },
+  "median_go_over_jit": 165.00450047939617,
+  "geomean_go_over_jit": 164.9985308728707,
+  "p90_go_over_jit": 469.5493989163562,
+  "sum_medians_go_over_jit": 142.74385780397432,
+  "median_go_over_interpreter": 28.480989692010755,
+  "median_go_ns": 2805.5625,
+  "median_jit_ns": 13.427,
+  "median_bytes": 25328.0,
+  "median_allocs": 13.0
+}

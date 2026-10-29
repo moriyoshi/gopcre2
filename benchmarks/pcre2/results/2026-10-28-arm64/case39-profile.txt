@@ -1,0 +1,27 @@
+File: go-worker
+Build ID: f5e8134e9554c4efb4e96bcb176653547063a48c
+Type: cpu
+Time: 2026-10-28 13:56:19 JST
+Duration: 3.60s, Total samples = 3600ms (100.13%)
+Showing nodes accounting for 2370ms, 65.83% of 3600ms total
+Dropped 49 nodes (cum <= 18ms)
+Showing top 18 nodes out of 124
+      flat  flat%   sum%        cum   cum%
+     520ms 14.44% 14.44%      870ms 24.17%  runtime.scanObject
+     200ms  5.56% 20.00%      200ms  5.56%  runtime.memclrNoHeapPointers
+     170ms  4.72% 24.72%      260ms  7.22%  runtime.typePointers.next
+     140ms  3.89% 28.61%      140ms  3.89%  internal/runtime/atomic.(*Uint64).Add (inline)
+     140ms  3.89% 32.50%      140ms  3.89%  runtime.markBits.setMarked (inline)
+     130ms  3.61% 36.11%      130ms  3.61%  runtime.(*mspan).writeHeapBitsSmall
+     130ms  3.61% 39.72%      170ms  4.72%  runtime.tryDeferToSpanScan
+     110ms  3.06% 42.78%      110ms  3.06%  internal/runtime/atomic.(*Uint32).Add (inline)
+     110ms  3.06% 45.83%      530ms 14.72%  runtime.(*sweepLocked).sweep
+     110ms  3.06% 48.89%      110ms  3.06%  runtime.(*sysMemStat).add
+     110ms  3.06% 51.94%      200ms  5.56%  runtime.scanblock
+     100ms  2.78% 54.72%      100ms  2.78%  runtime.(*mheap).allocNeedsZero
+      80ms  2.22% 56.94%       80ms  2.22%  runtime.(*gcBitsArena).tryAlloc (inline)
+      70ms  1.94% 58.89%       70ms  1.94%  internal/runtime/atomic.(*Uint32).CompareAndSwap
+      70ms  1.94% 60.83%       70ms  1.94%  runtime.getGCMask (inline)
+      60ms  1.67% 62.50%       60ms  1.67%  internal/runtime/atomic.(*Uint64).CompareAndSwap
+      60ms  1.67% 64.17%      320ms  8.89%  runtime.(*mheap).allocSpan
+      60ms  1.67% 65.83%      200ms  5.56%  runtime.(*mheap).freeSpanLocked
