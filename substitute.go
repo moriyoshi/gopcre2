@@ -61,7 +61,7 @@ func (re *Regexp) SubstituteAll(subject, replacement string) (string, error) {
 				if pos >= len(subject) {
 					break
 				}
-				_, size := utf8.DecodeRuneInString(subject[pos:])
+				_, size := decodeCharacter(subject[pos:], re.flags)
 				buf.WriteString(subject[pos : pos+size])
 				pos += size
 				continue

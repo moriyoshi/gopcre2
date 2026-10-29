@@ -503,6 +503,9 @@ func (p *parser) parseCharClass(tok Token) (*Node, error) {
 					continue
 				}
 				hi := p.advance()
+				if (hi.Kind != TokLiteral && hi.Kind != TokEscapeSeq) || hi.Literal < r {
+					return nil, &CompileError{Offset: t.Pos, Message: "invalid character class range"}
+				}
 				ranges = append(ranges, RuneRange{r, hi.Literal})
 			} else {
 				ranges = append(ranges, RuneRange{r, r})

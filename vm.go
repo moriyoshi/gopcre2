@@ -7,18 +7,20 @@ import (
 
 // vm executes a compiled Program against a subject string.
 type vm struct {
-	prog       *Program
-	subject    string
-	pos        int   // current position in subject
-	matchStart int   // where the reported match starts (\K can change this)
-	startPos   int   // where the current match attempt began (\G)
-	captures   []int // ovector: pairs of [start, end) per group; -1 = unset
-	stack      *btStack
-	flags      Flag   // runtime flags
-	steps      int    // step counter for match limit
-	depth      int    // current recursion depth
-	mark       string // most recent (*MARK:NAME) value
-	nextSubPC  uint32 // used by execOne for sub-VM stepping
+	loopPositions []int
+	prog          *Program
+	subject       string
+	pos           int   // current position in subject
+	matchStart    int   // where the reported match starts (\K can change this)
+	startPos      int   // where the current match attempt began (\G)
+	captures      []int // ovector: pairs of [start, end) per group; -1 = unset
+	stack         *btStack
+	flags         Flag   // runtime flags
+	steps         int    // step counter for match limit
+	depth         int    // current recursion depth
+	mark          string // most recent (*MARK:NAME) value
+	nextSubPC     uint32 // used by execOne for sub-VM stepping
+	backtrackPC   uint32 // resume point belongs to this invocation
 
 	// Limits
 	matchLimit int
@@ -90,6 +92,7 @@ func (v *vm) exec() bool {
 
 		switch inst.Op {
 		case OpMatch:
+
 			// Set capture 0
 			v.captures[0] = v.matchStart
 			v.captures[1] = v.pos
@@ -105,6 +108,15 @@ func (v *vm) exec() bool {
 		case OpNop:
 			pc = inst.Out
 			continue
+		case OpLoopBegin:
+			v.saveProgress(inst.N)
+			pc = inst.Out
+		case OpLoopEnd:
+			if v.loopProgressed(inst.N) {
+				pc = inst.Out
+			} else {
+				pc = inst.Arg
+			}
 
 		case OpRune:
 			if v.pos >= len(v.subject) {
@@ -114,7 +126,7 @@ func (v *vm) exec() bool {
 				pc = v.nextPC()
 				continue
 			}
-			r, size := utf8.DecodeRuneInString(v.subject[v.pos:])
+			r, size := decodeCharacter(v.subject[v.pos:], v.flags)
 			if r != inst.Runes[0] {
 				if !v.backtrack() {
 					return false
@@ -133,8 +145,8 @@ func (v *vm) exec() bool {
 				pc = v.nextPC()
 				continue
 			}
-			r, size := utf8.DecodeRuneInString(v.subject[v.pos:])
-			if !equalFold(r, inst.Runes[0]) {
+			r, size := decodeCharacter(v.subject[v.pos:], v.flags)
+			if !equalFold(r, inst.Runes[0], v.flags) {
 				if !v.backtrack() {
 					return false
 				}
@@ -152,7 +164,7 @@ func (v *vm) exec() bool {
 				pc = v.nextPC()
 				continue
 			}
-			r, size := utf8.DecodeRuneInString(v.subject[v.pos:])
+			r, size := decodeCharacter(v.subject[v.pos:], v.flags)
 			if r == '\n' {
 				if !v.backtrack() {
 					return false
@@ -172,7 +184,7 @@ func (v *vm) exec() bool {
 				pc = v.nextPC()
 				continue
 			}
-			_, size := utf8.DecodeRuneInString(v.subject[v.pos:])
+			_, size := decodeCharacter(v.subject[v.pos:], v.flags)
 			v.pos += size
 			pc = inst.Out
 
@@ -184,7 +196,7 @@ func (v *vm) exec() bool {
 				pc = v.nextPC()
 				continue
 			}
-			r, size := utf8.DecodeRuneInString(v.subject[v.pos:])
+			r, size := decodeCharacter(v.subject[v.pos:], v.flags)
 			if !v.matchCharClass(r, inst) {
 				if !v.backtrack() {
 					return false
@@ -203,7 +215,7 @@ func (v *vm) exec() bool {
 				pc = v.nextPC()
 				continue
 			}
-			r, size := utf8.DecodeRuneInString(v.subject[v.pos:])
+			r, size := decodeCharacter(v.subject[v.pos:], v.flags)
 			if !v.matchCharType(r, CharTypeKind(inst.N)) {
 				if !v.backtrack() {
 					return false
@@ -222,7 +234,7 @@ func (v *vm) exec() bool {
 				pc = v.nextPC()
 				continue
 			}
-			r, size := utf8.DecodeRuneInString(v.subject[v.pos:])
+			r, size := decodeCharacter(v.subject[v.pos:], v.flags)
 			match := matchProperty(r, inst.Str)
 			if inst.Op == OpPropertyNeg {
 				match = !match
@@ -500,7 +512,7 @@ func (v *vm) exec() bool {
 			matched := false
 			for lookback := maxLen; lookback >= minLen; lookback-- {
 				tryPos := v.pos - lookback
-				if tryPos < len(v.subject) && tryPos > 0 && !utf8.RuneStart(v.subject[tryPos]) {
+				if v.flags&UTF != 0 && tryPos < len(v.subject) && tryPos > 0 && !utf8.RuneStart(v.subject[tryPos]) {
 					for tryPos > 0 && !utf8.RuneStart(v.subject[tryPos]) {
 						tryPos--
 					}
@@ -552,7 +564,7 @@ func (v *vm) exec() bool {
 			matched := false
 			for lookback := maxLen; lookback >= minLen; lookback-- {
 				tryPos := v.pos - lookback
-				if tryPos < len(v.subject) && tryPos > 0 && !utf8.RuneStart(v.subject[tryPos]) {
+				if v.flags&UTF != 0 && tryPos < len(v.subject) && tryPos > 0 && !utf8.RuneStart(v.subject[tryPos]) {
 					for tryPos > 0 && !utf8.RuneStart(v.subject[tryPos]) {
 						tryPos--
 					}
@@ -658,6 +670,7 @@ func (v *vm) exec() bool {
 			pc = uint32(entry)
 
 		case OpAccept:
+
 			v.captures[0] = v.matchStart
 			v.captures[1] = v.pos
 			return true
@@ -756,10 +769,8 @@ func (v *vm) exec() bool {
 
 // nextPC returns the PC from the last popped frame (used after backtrack).
 // This is a helper — the actual PC is stored in the vm after backtrack.
-var btPC uint32
-
 func (v *vm) nextPC() uint32 {
-	return btPC
+	return v.backtrackPC
 }
 
 // backtrack pops the stack looking for a split frame to resume from.
@@ -772,10 +783,12 @@ func (v *vm) backtrack() bool {
 		switch f.kind {
 		case frameSplit:
 			v.pos = f.pos
-			btPC = f.pc
+			v.backtrackPC = f.pc
 			return true
 		case frameCapture:
 			v.captures[f.capSlot] = f.capVal
+		case frameProgress:
+			v.loopPositions[f.capSlot] = f.capVal
 		case frameLookaround:
 			v.pos = f.pos
 			v.matchStart = f.matchStart
@@ -832,7 +845,7 @@ func (v *vm) matchCharClass(r rune, inst *Inst) bool {
 			break
 		}
 		if caseFold {
-			for fr := unicode.SimpleFold(r); fr != r; fr = unicode.SimpleFold(fr) {
+			for fr := foldCharacter(r, v.flags); fr != r; fr = foldCharacter(fr, v.flags) {
 				if fr >= lo && fr <= hi {
 					matched = true
 					break
@@ -841,6 +854,13 @@ func (v *vm) matchCharClass(r rune, inst *Inst) bool {
 			if matched {
 				break
 			}
+		}
+	}
+
+	for _, ct := range inst.CharTypes {
+		if v.matchCharType(r, ct) {
+			matched = true
+			break
 		}
 	}
 
@@ -927,11 +947,11 @@ func (v *vm) atWordBoundary() bool {
 	prevWord := false
 	nextWord := false
 	if v.pos > 0 {
-		r, _ := utf8.DecodeLastRuneInString(v.subject[:v.pos])
+		r, _ := decodeLastCharacter(v.subject[:v.pos], v.flags)
 		prevWord = isWordChar(r, ucp)
 	}
 	if v.pos < len(v.subject) {
-		r, _ := utf8.DecodeRuneInString(v.subject[v.pos:])
+		r, _ := decodeCharacter(v.subject[v.pos:], v.flags)
 		nextWord = isWordChar(r, ucp)
 	}
 	return prevWord != nextWord
@@ -943,9 +963,9 @@ func (v *vm) matchStringFold(ref string) bool {
 		if pos >= len(v.subject) {
 			return false
 		}
-		r1, size1 := utf8.DecodeRuneInString(ref[i:])
-		r2, size2 := utf8.DecodeRuneInString(v.subject[pos:])
-		if !equalFold(r1, r2) {
+		r1, size1 := decodeCharacter(ref[i:], v.flags)
+		r2, size2 := decodeCharacter(v.subject[pos:], v.flags)
+		if !equalFold(r1, r2, v.flags) {
 			return false
 		}
 		i += size1
@@ -989,11 +1009,21 @@ var _ = (*vm).execOne // ensure method exists
 // execOne executes a single instruction, returning true if execution should continue.
 func (v *vm) execOne(pc uint32, inst *Inst) bool {
 	switch inst.Op {
+	case OpLoopBegin:
+		v.saveProgress(inst.N)
+		v.nextSubPC = inst.Out
+		return true
+	case OpLoopEnd:
+		v.nextSubPC = inst.Out
+		if !v.loopProgressed(inst.N) {
+			v.nextSubPC = inst.Arg
+		}
+		return true
 	case OpRune:
 		if v.pos >= len(v.subject) {
 			return v.backtrackSub()
 		}
-		r, size := utf8.DecodeRuneInString(v.subject[v.pos:])
+		r, size := decodeCharacter(v.subject[v.pos:], v.flags)
 		if r != inst.Runes[0] {
 			return v.backtrackSub()
 		}
@@ -1004,8 +1034,8 @@ func (v *vm) execOne(pc uint32, inst *Inst) bool {
 		if v.pos >= len(v.subject) {
 			return v.backtrackSub()
 		}
-		r, size := utf8.DecodeRuneInString(v.subject[v.pos:])
-		if !equalFold(r, inst.Runes[0]) {
+		r, size := decodeCharacter(v.subject[v.pos:], v.flags)
+		if !equalFold(r, inst.Runes[0], v.flags) {
 			return v.backtrackSub()
 		}
 		v.pos += size
@@ -1015,7 +1045,7 @@ func (v *vm) execOne(pc uint32, inst *Inst) bool {
 		if v.pos >= len(v.subject) {
 			return v.backtrackSub()
 		}
-		r, size := utf8.DecodeRuneInString(v.subject[v.pos:])
+		r, size := decodeCharacter(v.subject[v.pos:], v.flags)
 		if r == '\n' {
 			return v.backtrackSub()
 		}
@@ -1026,7 +1056,7 @@ func (v *vm) execOne(pc uint32, inst *Inst) bool {
 		if v.pos >= len(v.subject) {
 			return v.backtrackSub()
 		}
-		_, size := utf8.DecodeRuneInString(v.subject[v.pos:])
+		_, size := decodeCharacter(v.subject[v.pos:], v.flags)
 		v.pos += size
 		v.nextSubPC = inst.Out
 		return true
@@ -1034,7 +1064,7 @@ func (v *vm) execOne(pc uint32, inst *Inst) bool {
 		if v.pos >= len(v.subject) {
 			return v.backtrackSub()
 		}
-		r, size := utf8.DecodeRuneInString(v.subject[v.pos:])
+		r, size := decodeCharacter(v.subject[v.pos:], v.flags)
 		if !v.matchCharClass(r, inst) {
 			return v.backtrackSub()
 		}
@@ -1045,7 +1075,7 @@ func (v *vm) execOne(pc uint32, inst *Inst) bool {
 		if v.pos >= len(v.subject) {
 			return v.backtrackSub()
 		}
-		r, size := utf8.DecodeRuneInString(v.subject[v.pos:])
+		r, size := decodeCharacter(v.subject[v.pos:], v.flags)
 		if !v.matchCharType(r, CharTypeKind(inst.N)) {
 			return v.backtrackSub()
 		}
@@ -1110,6 +1140,8 @@ func (v *vm) backtrackSub() bool {
 			return true
 		case frameCapture:
 			v.captures[f.capSlot] = f.capVal
+		case frameProgress:
+			v.loopPositions[f.capSlot] = f.capVal
 		default:
 			continue
 		}
@@ -1302,12 +1334,12 @@ func (v *vm) findLookbehindEnd(startPC uint32) uint32 {
 
 // Helper functions
 
-func equalFold(r1, r2 rune) bool {
+func equalFold(r1, r2 rune, flags Flag) bool {
 	if r1 == r2 {
 		return true
 	}
 	// Use unicode.SimpleFold to iterate through the case-fold orbit
-	for fr := unicode.SimpleFold(r1); fr != r1; fr = unicode.SimpleFold(fr) {
+	for fr := foldCharacter(r1, flags); fr != r1; fr = foldCharacter(fr, flags) {
 		if fr == r2 {
 			return true
 		}

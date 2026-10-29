@@ -1,7 +1,5 @@
 package gopcre2
 
-import "unicode/utf8"
-
 // MatchData holds the result of a match operation.
 type MatchData struct {
 	subject string
@@ -171,7 +169,7 @@ func (re *Regexp) FindAllString(s string, n int) []string {
 				if pos >= len(s) {
 					break
 				}
-				_, size := utf8.DecodeRuneInString(s[pos:])
+				_, size := decodeCharacter(s[pos:], re.flags)
 				pos += size
 				continue
 			}
@@ -226,7 +224,7 @@ func (re *Regexp) FindAllStringIndex(s string, n int) [][]int {
 				if pos >= len(s) {
 					break
 				}
-				_, size := utf8.DecodeRuneInString(s[pos:])
+				_, size := decodeCharacter(s[pos:], re.flags)
 				pos += size
 				continue
 			}
@@ -281,7 +279,7 @@ func (re *Regexp) FindAllStringSubmatch(s string, n int) [][]string {
 				if pos >= len(s) {
 					break
 				}
-				_, size := utf8.DecodeRuneInString(s[pos:])
+				_, size := decodeCharacter(s[pos:], re.flags)
 				pos += size
 				continue
 			}
@@ -345,7 +343,7 @@ func (re *Regexp) FindAllStringSubmatchIndex(s string, n int) [][]int {
 				if pos >= len(s) {
 					break
 				}
-				_, size := utf8.DecodeRuneInString(s[pos:])
+				_, size := decodeCharacter(s[pos:], re.flags)
 				pos += size
 				continue
 			}

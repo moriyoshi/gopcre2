@@ -19,9 +19,49 @@ func newLexer(pattern string, flags Flag) *lexer {
 }
 
 func (l *lexer) tokenize() ([]Token, error) {
+	// Encoding directives are global and must precede the pattern body.
+	for l.pos < len(l.src) {
+		var set, unset Flag
+		rest := l.src[l.pos:]
+		length := 0
+		for _, directive := range []struct {
+			text       string
+			set, unset Flag
+		}{
+			{"(*UTF)", UTF, 0}, {"(*UCP)", UCP, 0},
+			{"(*NO_START_OPT)", NoStartOptimize, 0}, {"(*NO_AUTO_POSSESS)", NoAutoPos, 0},
+			{"(*NO_DOTSTAR_ANCHOR)", NoDotStarAnchor, 0},
+			{"(*CR)", NewlineCR, newlineFlags}, {"(*LF)", NewlineLF, newlineFlags},
+			{"(*CRLF)", NewlineCRLF, newlineFlags}, {"(*ANY)", NewlineAny, newlineFlags},
+			{"(*ANYCRLF)", NewlineAnyCRLF, newlineFlags}, {"(*NUL)", NewlineNUL, newlineFlags},
+			{"(*BSR_ANYCRLF)", BSRAnyCRLF, BSRAnyCRLF | BSRUnicode},
+			{"(*BSR_UNICODE)", BSRUnicode, BSRAnyCRLF | BSRUnicode},
+		} {
+			if strings.HasPrefix(rest, directive.text) {
+				length, set, unset = len(directive.text), directive.set, directive.unset
+				break
+			}
+		}
+		if length == 0 {
+			break
+		}
+		l.flags = (l.flags &^ unset) | set
+		l.pos += length
+	}
+	if l.flags&UTF != 0 && !utf8.ValidString(l.src) {
+		return nil, l.errorf(0, "invalid UTF-8 pattern")
+	}
 	for l.pos < len(l.src) {
 		if err := l.nextToken(); err != nil {
 			return nil, err
+		}
+	}
+	for _, tok := range l.tokens {
+		if tok.Kind == TokLiteral || tok.Kind == TokEscapeSeq {
+			r := tok.Literal
+			if r < 0 || (l.flags&UTF == 0 && r > 255) || (l.flags&UTF != 0 && !utf8.ValidRune(r)) {
+				return nil, l.errorf(tok.Pos, "character value out of range for encoding")
+			}
 		}
 	}
 	l.tokens = append(l.tokens, Token{Kind: TokEOF, Pos: l.pos})
@@ -50,7 +90,7 @@ func (l *lexer) advance() byte {
 }
 
 func (l *lexer) readRune() (rune, int) {
-	return utf8.DecodeRuneInString(l.src[l.pos:])
+	return decodeCharacter(l.src[l.pos:], l.flags)
 }
 
 func (l *lexer) emit(tok Token) {
@@ -133,7 +173,7 @@ func (l *lexer) nextToken() error {
 		return l.lexGroupOpen(startPos)
 	default:
 		// literal rune
-		r, size := utf8.DecodeRuneInString(l.src[l.pos:])
+		r, size := l.readRune()
 		l.pos += size
 		l.emit(Token{Kind: TokLiteral, Pos: startPos, Literal: r})
 	}
@@ -349,6 +389,9 @@ func (l *lexer) lexHexEscape(startPos int) error {
 			if d < 0 {
 				return l.errorf(l.pos, "invalid hex digit in \\x{}")
 			}
+			if val > 0x10ffff/16 {
+				return l.errorf(startPos, "character value out of range")
+			}
 			val = val*16 + d
 			l.pos++
 			count++
@@ -387,6 +430,9 @@ func (l *lexer) lexOctalBrace(startPos int) error {
 	for l.pos < len(l.src) && l.src[l.pos] != '}' {
 		if l.src[l.pos] < '0' || l.src[l.pos] > '7' {
 			return l.errorf(l.pos, "invalid octal digit in \\o{}")
+		}
+		if val > 0x10ffff/8 {
+			return l.errorf(startPos, "character value out of range")
 		}
 		val = val*8 + int(l.src[l.pos]-'0')
 		l.pos++
@@ -847,6 +893,8 @@ func (l *lexer) lexVerb(startPos int) error {
 	l.pos++ // skip )
 
 	switch strings.ToUpper(name) {
+	case "UTF", "UCP", "CR", "LF", "CRLF", "ANY", "ANYCRLF", "NUL", "BSR_ANYCRLF", "BSR_UNICODE":
+		return l.errorf(startPos, "global option must occur at start of pattern")
 	case "ACCEPT":
 		l.emit(Token{Kind: TokVerb, Pos: startPos, VerbType: VerbAccept})
 	case "FAIL", "F":
@@ -914,20 +962,18 @@ func (l *lexer) lexCharClass(startPos int) error {
 			continue
 		}
 
-		// Check for range: a-z
-		if l.pos+2 < len(l.src) && l.src[l.pos+1] == '-' && l.src[l.pos+2] != ']' {
-			r1, sz1 := utf8.DecodeRuneInString(l.src[l.pos:])
-			l.pos += sz1
-			l.emit(Token{Kind: TokLiteral, Pos: l.pos - sz1, Literal: r1})
-			l.pos++ // skip -
-			l.emit(Token{Kind: TokCharClassRange, Pos: l.pos - 1})
-			r2, sz2 := utf8.DecodeRuneInString(l.src[l.pos:])
-			l.pos += sz2
-			l.emit(Token{Kind: TokLiteral, Pos: l.pos - sz2, Literal: r2})
+		// A range dash follows a scalar endpoint. Decode the other endpoint
+		// normally so escaped endpoints and multibyte UTF characters work too.
+		count := len(l.tokens)
+		if ch == '-' && l.pos+1 < len(l.src) && l.src[l.pos+1] != ']' && count > 0 &&
+			(l.tokens[count-1].Kind == TokLiteral || l.tokens[count-1].Kind == TokEscapeSeq) &&
+			(count < 2 || l.tokens[count-2].Kind != TokCharClassRange) {
+			l.emit(Token{Kind: TokCharClassRange, Pos: l.pos})
+			l.pos++
 			continue
 		}
 
-		r, size := utf8.DecodeRuneInString(l.src[l.pos:])
+		r, size := l.readRune()
 		l.pos += size
 		l.emit(Token{Kind: TokLiteral, Pos: l.pos - size, Literal: r})
 	}
@@ -1009,6 +1055,9 @@ func (l *lexer) lexClassEscape(startPos int) error {
 		val := 0
 		count := 0
 		for count < 2 && l.pos < len(l.src) && l.src[l.pos] >= '0' && l.src[l.pos] <= '7' {
+			if val > 0x10ffff/8 {
+				return l.errorf(startPos, "character value out of range")
+			}
 			val = val*8 + int(l.src[l.pos]-'0')
 			l.pos++
 			count++

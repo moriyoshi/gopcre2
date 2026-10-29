@@ -51,7 +51,7 @@ func TestUnicodeProperties(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.pattern+"_"+tt.subject, func(t *testing.T) {
-			re, err := Compile(tt.pattern)
+			re, err := Compile(tt.pattern, UTF)
 			if err != nil {
 				t.Fatalf("Compile(%q): %v", tt.pattern, err)
 			}
@@ -65,14 +65,14 @@ func TestUnicodeProperties(t *testing.T) {
 
 func TestUCPMode(t *testing.T) {
 	// In UCP mode, \d matches Unicode digits, \w matches Unicode word chars
-	re := MustCompile(`\d+`, UCP)
+	re := MustCompile(`\d+`, UTF|UCP)
 	// Arabic-Indic digit
 	if !re.MatchString("\u0660") {
 		t.Error("UCP \\d should match Arabic-Indic digit")
 	}
 
 	// \w in UCP mode
-	reW := MustCompile(`\w+`, UCP)
+	reW := MustCompile(`\w+`, UTF|UCP)
 	if !reW.MatchString("\u00e9") { // é
 		t.Error("UCP \\w should match accented letter")
 	}

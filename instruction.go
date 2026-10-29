@@ -80,17 +80,20 @@ const (
 	OpPropertyNeg // match \P{Name}
 
 	// Inline option change
-	OpSetFlags // change flags (N = set bits, N2 = unset bits)
+	OpSetFlags  // change flags (N = set bits, N2 = unset bits)
+	OpLoopBegin // save input position before a potentially empty iteration
+	OpLoopEnd   // repeat via Out if progress was made, otherwise continue at Arg
 )
 
 // Inst is a single VM instruction.
 type Inst struct {
-	Op     Opcode
-	Out    uint32 // primary branch / next instruction
-	Arg    uint32 // secondary branch target
-	N      int    // numeric operand (group index, char type, etc.)
-	N2     int    // second numeric operand
-	Runes  []rune // for OpRune, OpRuneFold: single rune; for OpCharClass: range pairs [lo,hi,lo,hi,...]
-	Negate bool   // for OpCharClass: negated class
-	Str    string // for names, property names, mark names, callout strings
+	Op        Opcode
+	Out       uint32         // primary branch / next instruction
+	Arg       uint32         // secondary branch target
+	N         int            // numeric operand (group index, char type, etc.)
+	N2        int            // second numeric operand
+	CharTypes []CharTypeKind // shorthand predicates in OpCharClass
+	Runes     []rune         // for OpRune, OpRuneFold: single rune; for OpCharClass: range pairs [lo,hi,lo,hi,...]
+	Negate    bool           // for OpCharClass: negated class
+	Str       string         // for names, property names, mark names, callout strings
 }

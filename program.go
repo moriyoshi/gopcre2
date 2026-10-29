@@ -4,6 +4,8 @@ import "fmt"
 
 // Program is a compiled PCRE2 pattern ready for execution by the VM.
 type Program struct {
+	numLoops    int
+	pattern     *Pattern         // immutable structured representation before VM lowering
 	Inst        []Inst           // instruction array
 	Start       int              // index of first instruction
 	NumCapture  int              // total number of capture groups (0 = whole match)
@@ -40,6 +42,7 @@ func (p *Program) Dump() string {
 
 // opNames maps opcodes to their display names for debugging.
 var opNames = map[Opcode]string{
+	OpLoopBegin: "LoopBegin", OpLoopEnd: "LoopEnd",
 	OpMatch: "Match", OpFail: "Fail", OpNop: "Nop",
 	OpRune: "Rune", OpRuneFold: "RuneFold", OpCharClass: "CharClass",
 	OpAnyCharNotNL: "AnyCharNotNL", OpAnyChar: "AnyChar", OpCharType: "CharType",

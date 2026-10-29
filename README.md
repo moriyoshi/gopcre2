@@ -38,6 +38,13 @@ with an API similar to the standard library.
 - **All anchors**: `^`, `$`, `\A`, `\z`, `\Z`, `\G`, `\b`, `\B`
 - **Escape sequences**: `\xhh`, `\x{hhhh}`, `\o{ooo}`, `\cX`, `\n`, `\r`, `\t`, `\f`, `\a`, `\e`
 
+Like PCRE2-8, matching uses bytes unless `UTF` is enabled. For example, `.`
+consumes one byte of `é` by default and the complete character with `UTF`.
+`UCP` changes character properties independently; use `UTF | UCP` for Unicode
+shorthand classes over UTF-8 text. Leading `(*UTF)` and `(*UCP)` directives
+provide the same options. Earlier versions decoded UTF-8 implicitly; callers
+that relied on that behavior should enable `UTF` explicitly.
+
 ## Installation
 
 ```bash

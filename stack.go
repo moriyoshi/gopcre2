@@ -12,6 +12,7 @@ const (
 	frameVerb                        // backtracking verb marker
 	frameMark                        // (*MARK:NAME) record
 	frameFlagSave                    // saved flags state
+	frameProgress                    // saved loop progress slot
 )
 
 // stackFrame is a single entry on the backtrack stack.
@@ -53,6 +54,7 @@ func (s *btStack) pop() (stackFrame, bool) {
 	}
 	n := len(s.frames) - 1
 	f := s.frames[n]
+	s.frames[n] = stackFrame{}
 	s.frames = s.frames[:n]
 	s.heapUsed -= frameSize(f)
 	return f, true
@@ -70,6 +72,7 @@ func (s *btStack) empty() bool {
 func (s *btStack) truncate(n int) {
 	for i := len(s.frames) - 1; i >= n; i-- {
 		s.heapUsed -= frameSize(s.frames[i])
+		s.frames[i] = stackFrame{}
 	}
 	s.frames = s.frames[:n]
 }
