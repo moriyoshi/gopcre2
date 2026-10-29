@@ -2,25 +2,26 @@ package gopcre2
 
 import (
 	"unicode"
-	"unicode/utf8"
 )
 
 // vm executes a compiled Program against a subject string.
 type vm struct {
-	loopPositions []int
-	prog          *Program
-	subject       string
-	pos           int   // current position in subject
-	matchStart    int   // where the reported match starts (\K can change this)
-	startPos      int   // where the current match attempt began (\G)
-	captures      []int // ovector: pairs of [start, end) per group; -1 = unset
-	stack         *btStack
-	flags         Flag   // runtime flags
-	steps         int    // step counter for match limit
-	depth         int    // current recursion depth
-	mark          string // most recent (*MARK:NAME) value
-	nextSubPC     uint32 // used by execOne for sub-VM stepping
-	backtrackPC   uint32 // resume point belongs to this invocation
+	child           *vm
+	notEmptyAtStart bool
+	searchStart     int
+	loopPositions   []int
+	prog            *Program
+	subject         string
+	pos             int   // current position in subject
+	matchStart      int   // where the reported match starts (\K can change this)
+	startPos        int   // where the current match attempt began (\G)
+	captures        []int // ovector: pairs of [start, end) per group; -1 = unset
+	stack           *btStack
+	flags           Flag   // runtime flags
+	steps           int    // step counter for match limit
+	depth           int    // current recursion depth
+	mark            string // most recent (*MARK:NAME) value
+	backtrackPC     uint32 // resume point belongs to this invocation
 
 	// Limits
 	matchLimit int
@@ -71,8 +72,11 @@ func newVM(prog *Program, subject string, startPos int) *vm {
 
 // exec runs the VM from the current position. Returns true if a match was found.
 func (v *vm) exec() bool {
-	pc := uint32(v.prog.Start)
+	return v.execFrom(uint32(v.prog.Start), -1, -1)
+}
 
+// A child uses the same dispatcher, bounded by its enclosing assertion/group.
+func (v *vm) execFrom(pc uint32, endPC, targetPos int) bool {
 	for {
 		// Check limits
 		v.steps++
@@ -85,6 +89,16 @@ func (v *vm) exec() bool {
 			return false
 		}
 
+		if int(pc) == endPC {
+			if targetPos < 0 || v.pos == targetPos {
+				return true
+			}
+			if !v.backtrack() {
+				return false
+			}
+			pc = v.nextPC()
+			continue
+		}
 		if int(pc) >= len(v.prog.Inst) {
 			return false
 		}
@@ -92,7 +106,13 @@ func (v *vm) exec() bool {
 
 		switch inst.Op {
 		case OpMatch:
-
+			if endPC < 0 && v.notEmptyAtStart && v.pos == v.matchStart && v.matchStart == v.searchStart {
+				if !v.backtrack() {
+					return false
+				}
+				pc = v.nextPC()
+				continue
+			}
 			// Set capture 0
 			v.captures[0] = v.matchStart
 			v.captures[1] = v.pos
@@ -250,6 +270,7 @@ func (v *vm) exec() bool {
 			pc = inst.Out
 
 		case OpSplit:
+
 			// Greedy: try Out first, save Arg as alternative
 			v.stack.push(stackFrame{
 				kind: frameSplit,
@@ -297,7 +318,7 @@ func (v *vm) exec() bool {
 			pc = inst.Out
 
 		case OpAssertBeginLine:
-			if v.pos == 0 || (v.flags&Multiline != 0 && v.pos > 0 && v.subject[v.pos-1] == '\n') {
+			if v.pos == 0 || (v.flags&Multiline != 0 && v.pos > 0 && v.pos < len(v.subject) && v.subject[v.pos-1] == '\n') {
 				pc = inst.Out
 			} else {
 				if !v.backtrack() {
@@ -399,7 +420,16 @@ func (v *vm) exec() bool {
 			pc = inst.Out
 
 		case OpBackref, OpBackrefFold:
-			if inst.N*2+1 >= len(v.captures) {
+			group := inst.N
+			if inst.Str != "" {
+				for _, idx := range v.prog.NameToGroup[inst.Str] {
+					if v.captures[idx*2] >= 0 && v.captures[idx*2+1] >= 0 {
+						group = idx
+						break
+					}
+				}
+			}
+			if group < 0 || group*2+1 >= len(v.captures) {
 				// Backreference to non-existent group
 				if !v.backtrack() {
 					return false
@@ -407,8 +437,8 @@ func (v *vm) exec() bool {
 				pc = v.nextPC()
 				continue
 			}
-			groupStart := v.captures[inst.N*2]
-			groupEnd := v.captures[inst.N*2+1]
+			groupStart := v.captures[group*2]
+			groupEnd := v.captures[group*2+1]
 			if groupStart < 0 || groupEnd < 0 {
 				// Unset backreference
 				if v.flags&MatchUnsetBackref != 0 {
@@ -444,188 +474,82 @@ func (v *vm) exec() bool {
 			}
 			pc = inst.Out
 
-		case OpLookaheadStart:
-			// Run sub-VM for lookahead
-			endPC := v.findLookaheadEnd(pc+1, OpLookaheadEnd)
-			savedPos := v.pos
-			matched := v.runSubMatch(pc+1, endPC)
-			v.pos = savedPos // restore position (zero-width)
-			if !matched {
+		case OpLookaheadStart, OpNegLookaheadStart:
+			negative := inst.Op == OpNegLookaheadStart
+			endOp := OpLookaheadEnd
+			if negative {
+				endOp = OpNegLookaheadEnd
+			}
+			end := v.findLookaheadEnd(pc+1, endOp)
+			sub, matched := v.runChild(pc+1, end, v.pos, -1)
+			if v.limitErr != nil {
+				return false
+			}
+			if matched == negative {
 				if !v.backtrack() {
 					return false
 				}
 				pc = v.nextPC()
 				continue
 			}
-			pc = uint32(endPC) + 1
-			// Wire to Out of the end instruction
-			if int(endPC) < len(v.prog.Inst) {
-				pc = v.prog.Inst[endPC].Out
+			if !negative {
+				v.adoptCaptures(sub)
+				v.matchStart = sub.matchStart
+				v.mark = sub.mark
 			}
-
-		case OpLookaheadEnd:
-			// Should not be reached directly; handled by sub-VM
-			pc = inst.Out
-
-		case OpNegLookaheadStart:
-			endPC := v.findLookaheadEnd(pc+1, OpNegLookaheadEnd)
-			savedPos := v.pos
-			savedCaps := make([]int, len(v.captures))
-			copy(savedCaps, v.captures)
-			matched := v.runSubMatch(pc+1, endPC)
-			v.pos = savedPos
-			copy(v.captures, savedCaps) // restore captures for neg lookahead
-			if matched {
-				// Inner matched → negative lookahead fails
-				if !v.backtrack() {
-					return false
-				}
-				pc = v.nextPC()
-				continue
+			pc = v.prog.Inst[end].Out
+		case OpLookbehindStart, OpNegLookbehindStart:
+			negative := inst.Op == OpNegLookbehindStart
+			end := v.lookbehindEndPC(inst.Out)
+			max := inst.N2
+			if max < 0 || max > v.pos {
+				max = v.pos
 			}
-			pc = uint32(endPC) + 1
-			if int(endPC) < len(v.prog.Inst) {
-				pc = v.prog.Inst[endPC].Out
-			}
-
-		case OpNegLookaheadEnd:
-			pc = inst.Out
-
-		case OpLookbehindStart:
-			minLen := inst.N
-			maxLen := inst.N2
-			if maxLen < 0 {
-				maxLen = v.pos // can't look back further than start
-			}
-			if maxLen > v.pos {
-				maxLen = v.pos
-			}
-			if minLen > v.pos {
-				if !v.backtrack() {
-					return false
-				}
-				pc = v.nextPC()
-				continue
-			}
-			// Try each possible lookbehind start position from maxLen to minLen
-			savedPos := v.pos
+			pos, available := v.lookbehindStart(max)
 			matched := false
-			for lookback := maxLen; lookback >= minLen; lookback-- {
-				tryPos := v.pos - lookback
-				if v.flags&UTF != 0 && tryPos < len(v.subject) && tryPos > 0 && !utf8.RuneStart(v.subject[tryPos]) {
-					for tryPos > 0 && !utf8.RuneStart(v.subject[tryPos]) {
-						tryPos--
-					}
-					lookback = v.pos - tryPos
+			for length := available; length >= inst.N; length-- {
+				if length < available {
+					_, size := decodeCharacter(v.subject[pos:], v.flags)
+					pos += size
 				}
-				if lookback < minLen {
-					break
+				sub, ok := v.runChild(inst.Out, end, pos, v.pos)
+				if v.limitErr != nil {
+					return false
 				}
-				subVM := newVM(v.prog, v.subject, tryPos)
-				subVM.flags = v.flags
-				subVM.captures = make([]int, len(v.captures))
-				copy(subVM.captures, v.captures)
-				subVM.matchLimit = v.matchLimit - v.steps
-				subVM.pos = tryPos
-				if v.execLookbehindBody(subVM, inst.Out, savedPos) {
+				if ok {
 					matched = true
+					if !negative {
+						v.adoptCaptures(sub)
+						v.mark = sub.mark
+					}
 					break
 				}
 			}
-			if !matched {
+			if matched == negative {
 				if !v.backtrack() {
 					return false
 				}
 				pc = v.nextPC()
 				continue
 			}
-			v.pos = savedPos
-			// Skip past the lookbehind body to the LookbehindEnd
-			pc = v.findLookbehindEnd(inst.Out)
-
-		case OpLookbehindEnd:
-			pc = inst.Out
-
-		case OpNegLookbehindStart:
-			minLen := inst.N
-			maxLen := inst.N2
-			if maxLen < 0 {
-				maxLen = v.pos
-			}
-			if maxLen > v.pos {
-				maxLen = v.pos
-			}
-			if minLen > v.pos {
-				// Can't look back far enough, so nothing matches → neg lookbehind succeeds
-				pc = v.findLookbehindEnd(inst.Out)
-				continue
-			}
-			savedPos := v.pos
-			matched := false
-			for lookback := maxLen; lookback >= minLen; lookback-- {
-				tryPos := v.pos - lookback
-				if v.flags&UTF != 0 && tryPos < len(v.subject) && tryPos > 0 && !utf8.RuneStart(v.subject[tryPos]) {
-					for tryPos > 0 && !utf8.RuneStart(v.subject[tryPos]) {
-						tryPos--
-					}
-					lookback = v.pos - tryPos
-				}
-				if lookback < minLen {
-					break
-				}
-				subVM := newVM(v.prog, v.subject, tryPos)
-				subVM.flags = v.flags
-				subVM.captures = make([]int, len(v.captures))
-				copy(subVM.captures, v.captures)
-				subVM.matchLimit = v.matchLimit - v.steps
-				subVM.pos = tryPos
-				if v.execLookbehindBody(subVM, inst.Out, savedPos) {
-					matched = true
-					break
-				}
-			}
-			if matched {
-				// Neg lookbehind fails
-				v.pos = savedPos
-				if !v.backtrack() {
-					return false
-				}
-				pc = v.nextPC()
-				continue
-			}
-			v.pos = savedPos
-			pc = v.findLookbehindEnd(inst.Out)
-
-		case OpNegLookbehindEnd:
-			pc = inst.Out
-
+			pc = v.prog.Inst[end].Out
 		case OpAtomicStart:
-			// Run the inner pattern as a sub-match.
-			// If it succeeds, accept the result without allowing backtracking into it.
-			endPC := v.findAtomicEnd(pc + 1)
-			savedCaps := make([]int, len(v.captures))
-			copy(savedCaps, v.captures)
-			savedPos := v.pos
-			matched := v.runSubMatchAtomic(pc+1, endPC)
+			end := v.findAtomicEnd(pc + 1)
+			sub, matched := v.runChild(pc+1, end, v.pos, -1)
+			if v.limitErr != nil {
+				return false
+			}
 			if !matched {
-				// Atomic group failed to match — restore and backtrack
-				copy(v.captures, savedCaps)
-				v.pos = savedPos
 				if !v.backtrack() {
 					return false
 				}
 				pc = v.nextPC()
 				continue
 			}
-			// Atomic group matched — v.pos and v.captures are updated
-			// Continue past the atomic end without any backtrack alternatives
-			pc = uint32(endPC) + 1
-			if int(endPC) < len(v.prog.Inst) {
-				pc = v.prog.Inst[endPC].Out
-			}
-
-		case OpAtomicEnd:
-			// Should not be reached directly; handled by sub-VM
+			v.pos, v.matchStart, v.mark = sub.pos, sub.matchStart, sub.mark
+			v.adoptCaptures(sub)
+			pc = v.prog.Inst[end].Out
+		case OpLookaheadEnd, OpNegLookaheadEnd, OpLookbehindEnd, OpNegLookbehindEnd, OpAtomicEnd:
 			pc = inst.Out
 
 		case OpRecurse:
@@ -670,7 +594,13 @@ func (v *vm) exec() bool {
 			pc = uint32(entry)
 
 		case OpAccept:
-
+			if endPC < 0 && v.notEmptyAtStart && v.pos == v.matchStart && v.matchStart == v.searchStart {
+				if !v.backtrack() {
+					return false
+				}
+				pc = v.nextPC()
+				continue
+			}
 			v.captures[0] = v.matchStart
 			v.captures[1] = v.pos
 			return true
@@ -975,204 +905,6 @@ func (v *vm) matchStringFold(ref string) bool {
 	return true
 }
 
-// execLookbehindBody executes the lookbehind body from startPC, checking if it ends at targetPos.
-func (v *vm) execLookbehindBody(subVM *vm, startPC uint32, targetPos int) bool {
-	// Run the sub-VM on the body instructions
-	subVM.stack = newBTStack()
-	subPC := startPC
-	for {
-		subVM.steps++
-		if subVM.steps > subVM.matchLimit {
-			return false
-		}
-		if int(subPC) >= len(v.prog.Inst) {
-			return false
-		}
-		inst := &v.prog.Inst[subPC]
-		if inst.Op == OpLookbehindEnd || inst.Op == OpNegLookbehindEnd {
-			return subVM.pos == targetPos
-		}
-		// Execute one step
-		ok := subVM.execOne(subPC, inst)
-		if !ok {
-			return false
-		}
-		subPC = subVM.nextSubPC
-	}
-}
-
-var _ = (*vm).execOne // ensure method exists
-
-// nextSubPC is set by execOne for the lookbehind sub-VM.
-// This is a field on vm that we'll add.
-
-// execOne executes a single instruction, returning true if execution should continue.
-func (v *vm) execOne(pc uint32, inst *Inst) bool {
-	switch inst.Op {
-	case OpLoopBegin:
-		v.saveProgress(inst.N)
-		v.nextSubPC = inst.Out
-		return true
-	case OpLoopEnd:
-		v.nextSubPC = inst.Out
-		if !v.loopProgressed(inst.N) {
-			v.nextSubPC = inst.Arg
-		}
-		return true
-	case OpRune:
-		if v.pos >= len(v.subject) {
-			return v.backtrackSub()
-		}
-		r, size := decodeCharacter(v.subject[v.pos:], v.flags)
-		if r != inst.Runes[0] {
-			return v.backtrackSub()
-		}
-		v.pos += size
-		v.nextSubPC = inst.Out
-		return true
-	case OpRuneFold:
-		if v.pos >= len(v.subject) {
-			return v.backtrackSub()
-		}
-		r, size := decodeCharacter(v.subject[v.pos:], v.flags)
-		if !equalFold(r, inst.Runes[0], v.flags) {
-			return v.backtrackSub()
-		}
-		v.pos += size
-		v.nextSubPC = inst.Out
-		return true
-	case OpAnyCharNotNL:
-		if v.pos >= len(v.subject) {
-			return v.backtrackSub()
-		}
-		r, size := decodeCharacter(v.subject[v.pos:], v.flags)
-		if r == '\n' {
-			return v.backtrackSub()
-		}
-		v.pos += size
-		v.nextSubPC = inst.Out
-		return true
-	case OpAnyChar:
-		if v.pos >= len(v.subject) {
-			return v.backtrackSub()
-		}
-		_, size := decodeCharacter(v.subject[v.pos:], v.flags)
-		v.pos += size
-		v.nextSubPC = inst.Out
-		return true
-	case OpCharClass:
-		if v.pos >= len(v.subject) {
-			return v.backtrackSub()
-		}
-		r, size := decodeCharacter(v.subject[v.pos:], v.flags)
-		if !v.matchCharClass(r, inst) {
-			return v.backtrackSub()
-		}
-		v.pos += size
-		v.nextSubPC = inst.Out
-		return true
-	case OpCharType:
-		if v.pos >= len(v.subject) {
-			return v.backtrackSub()
-		}
-		r, size := decodeCharacter(v.subject[v.pos:], v.flags)
-		if !v.matchCharType(r, CharTypeKind(inst.N)) {
-			return v.backtrackSub()
-		}
-		v.pos += size
-		v.nextSubPC = inst.Out
-		return true
-	case OpSplit:
-		v.stack.push(stackFrame{kind: frameSplit, pc: inst.Arg, pos: v.pos})
-		v.nextSubPC = inst.Out
-		return true
-	case OpSplitLazy:
-		v.stack.push(stackFrame{kind: frameSplit, pc: inst.Arg, pos: v.pos})
-		v.nextSubPC = inst.Out
-		return true
-	case OpJump:
-		v.nextSubPC = inst.Out
-		return true
-	case OpCaptureStart:
-		slot := inst.N * 2
-		if slot < len(v.captures) {
-			v.stack.push(stackFrame{kind: frameCapture, capSlot: slot, capVal: v.captures[slot]})
-			v.captures[slot] = v.pos
-		}
-		v.nextSubPC = inst.Out
-		return true
-	case OpCaptureEnd:
-		slot := inst.N*2 + 1
-		if slot < len(v.captures) {
-			v.stack.push(stackFrame{kind: frameCapture, capSlot: slot, capVal: v.captures[slot]})
-			v.captures[slot] = v.pos
-		}
-		v.nextSubPC = inst.Out
-		return true
-	case OpAssertBeginLine, OpAssertEndLine, OpAssertBeginText, OpAssertEndText,
-		OpAssertEndTextOrNewline, OpAssertWordBoundary, OpAssertNonWordBoundary:
-		// Zero-width assertions — delegate to main assertion logic
-		ok := v.checkAssertion(inst.Op)
-		if !ok {
-			return v.backtrackSub()
-		}
-		v.nextSubPC = inst.Out
-		return true
-	case OpNop:
-		v.nextSubPC = inst.Out
-		return true
-	default:
-		v.nextSubPC = inst.Out
-		return true
-	}
-}
-
-func (v *vm) backtrackSub() bool {
-	for {
-		f, ok := v.stack.pop()
-		if !ok {
-			return false
-		}
-		switch f.kind {
-		case frameSplit:
-			v.pos = f.pos
-			v.nextSubPC = f.pc
-			return true
-		case frameCapture:
-			v.captures[f.capSlot] = f.capVal
-		case frameProgress:
-			v.loopPositions[f.capSlot] = f.capVal
-		default:
-			continue
-		}
-	}
-}
-
-func (v *vm) checkAssertion(op Opcode) bool {
-	switch op {
-	case OpAssertBeginLine:
-		return v.pos == 0 || (v.flags&Multiline != 0 && v.pos > 0 && v.subject[v.pos-1] == '\n')
-	case OpAssertEndLine:
-		atEnd := v.pos == len(v.subject)
-		beforeNL := v.pos < len(v.subject) && v.subject[v.pos] == '\n'
-		if v.flags&Multiline != 0 {
-			return atEnd || beforeNL
-		}
-		return atEnd || (beforeNL && v.pos+1 == len(v.subject))
-	case OpAssertBeginText:
-		return v.pos == 0
-	case OpAssertEndText:
-		return v.pos == len(v.subject)
-	case OpAssertEndTextOrNewline:
-		return v.pos == len(v.subject) || (v.pos+1 == len(v.subject) && v.subject[v.pos] == '\n')
-	case OpAssertWordBoundary:
-		return v.atWordBoundary()
-	case OpAssertNonWordBoundary:
-		return !v.atWordBoundary()
-	}
-	return false
-}
-
 // findLookaheadEnd scans instructions from startPC to find the matching lookahead end opcode.
 func (v *vm) findLookaheadEnd(startPC uint32, endOp Opcode) int {
 	depth := 0
@@ -1211,125 +943,46 @@ func (v *vm) findAtomicEnd(startPC uint32) int {
 	return int(startPC)
 }
 
-// runSubMatch runs a sub-VM to test if the instructions from startPC to endPC match
-// at the current position. Returns true if matched. Updates v.pos and v.captures on success.
-func (v *vm) runSubMatch(startPC uint32, endPC int) bool {
-	// Create a sub-VM sharing the same subject and captures
-	subVM := &vm{
-		prog:       v.prog,
-		subject:    v.subject,
-		pos:        v.pos,
-		matchStart: v.matchStart,
-		startPos:   v.startPos,
-		captures:   make([]int, len(v.captures)),
-		stack:      newBTStack(),
-		flags:      v.flags,
-		matchLimit: v.matchLimit - v.steps,
-		depthLimit: v.depthLimit,
-		heapLimit:  v.heapLimit,
-		callout:    v.callout,
-		depth:      v.depth,
+// One reusable child per active VM. Nested assertions use the child's own
+// child, so reentry never resets a live invocation. Charge all work and heap
+// against the enclosing invocation rather than copying its full allowance.
+func (v *vm) runChild(start uint32, end, pos, target int) (*vm, bool) {
+	if v.depth >= v.depthLimit {
+		v.limitErr = ErrDepthLimit
+		return nil, false
 	}
-	copy(subVM.captures, v.captures)
-
-	// Run from startPC, treating endPC as a "match" instruction
-	subPC := startPC
-	for {
-		subVM.steps++
-		v.steps++ // count toward parent limit
-		if v.steps > v.matchLimit {
-			v.limitErr = ErrMatchLimit
-			return false
-		}
-		if int(subPC) >= len(v.prog.Inst) || int(subPC) == endPC {
-			// Reached the end — match succeeded
-			v.pos = subVM.pos
-			copy(v.captures, subVM.captures)
-			return true
-		}
-
-		inst := &v.prog.Inst[subPC]
-
-		// Handle Match opcode within sub-match as success
-		if inst.Op == OpMatch {
-			v.pos = subVM.pos
-			copy(v.captures, subVM.captures)
-			return true
-		}
-
-		ok := subVM.execOne(subPC, inst)
-		if !ok {
-			return false
-		}
-		subPC = subVM.nextSubPC
+	sub := newVM(v.prog, v.subject, pos)
+	sub.resetAttempt(pos)
+	sub.subject, sub.flags = v.subject, v.flags
+	sub.matchStart, sub.startPos = v.matchStart, v.startPos
+	sub.matchLimit = v.matchLimit - v.steps
+	sub.depthLimit, sub.depth = v.depthLimit, v.depth+1
+	sub.heapLimit = v.heapLimit - v.stack.heapUsed
+	sub.callout, sub.mark = v.callout, v.mark
+	sub.notEmptyAtStart = false
+	copy(sub.captures, v.captures)
+	matched := sub.execFrom(start, end, target)
+	v.steps += sub.steps
+	if sub.limitErr != nil {
+		v.limitErr = sub.limitErr
 	}
+	return sub, matched
 }
 
-// runSubMatchAtomic runs a sub-VM for an atomic group. Returns true if matched.
-// On success, v.pos and v.captures are updated to the FIRST successful match
-// (no backtracking alternatives are preserved).
-func (v *vm) runSubMatchAtomic(startPC uint32, endPC int) bool {
-	subVM := &vm{
-		prog:       v.prog,
-		subject:    v.subject,
-		pos:        v.pos,
-		matchStart: v.matchStart,
-		startPos:   v.startPos,
-		captures:   make([]int, len(v.captures)),
-		stack:      newBTStack(),
-		flags:      v.flags,
-		matchLimit: v.matchLimit - v.steps,
-		depthLimit: v.depthLimit,
-		heapLimit:  v.heapLimit,
-		callout:    v.callout,
-		depth:      v.depth,
-	}
-	copy(subVM.captures, v.captures)
-
-	subPC := startPC
-	for {
-		subVM.steps++
-		v.steps++
-		if v.steps > v.matchLimit {
-			v.limitErr = ErrMatchLimit
-			return false
-		}
-		if int(subPC) >= len(v.prog.Inst) || int(subPC) == endPC {
-			v.pos = subVM.pos
-			copy(v.captures, subVM.captures)
-			return true
-		}
-
-		inst := &v.prog.Inst[subPC]
-		if inst.Op == OpMatch {
-			v.pos = subVM.pos
-			copy(v.captures, subVM.captures)
-			return true
-		}
-
-		ok := subVM.execOne(subPC, inst)
-		if !ok {
-			return false
-		}
-		subPC = subVM.nextSubPC
-	}
-}
-
-// findLookbehindEnd scans instructions from startPC to find the matching lookbehind end.
-func (v *vm) findLookbehindEnd(startPC uint32) uint32 {
+func (v *vm) lookbehindEndPC(start uint32) int {
 	depth := 0
-	for pc := startPC; int(pc) < len(v.prog.Inst); pc++ {
+	for pc := int(start); pc < len(v.prog.Inst); pc++ {
 		switch v.prog.Inst[pc].Op {
 		case OpLookbehindStart, OpNegLookbehindStart:
 			depth++
 		case OpLookbehindEnd, OpNegLookbehindEnd:
 			if depth == 0 {
-				return v.prog.Inst[pc].Out
+				return pc
 			}
 			depth--
 		}
 	}
-	return startPC // shouldn't happen
+	return len(v.prog.Inst) - 1
 }
 
 // Helper functions
@@ -1371,4 +1024,27 @@ func matchProperty(r rune, name string) bool {
 		return unicode.Is(tab, r)
 	}
 	return false
+}
+
+// Move back by characters rather than adjusting a byte counter. Each retry
+// advances one complete character, including at a multibyte subject's end.
+func (v *vm) lookbehindStart(max int) (int, int) {
+	pos, count := v.pos, 0
+	for count < max && pos > 0 {
+		_, size := decodeLastCharacter(v.subject[:pos], v.flags)
+		pos -= size
+		count++
+	}
+	return pos, count
+}
+
+// Assertion/atomic success exports captures with an undo record in the parent.
+func (v *vm) adoptCaptures(sub *vm) {
+	for i, value := range sub.captures {
+		if value == v.captures[i] {
+			continue
+		}
+		v.stack.push(stackFrame{kind: frameCapture, capSlot: i, capVal: v.captures[i]})
+		v.captures[i] = value
+	}
 }

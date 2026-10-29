@@ -172,59 +172,57 @@ func (re *Regexp) execAt(subject string, startPos int) *vm {
 
 // findMatch searches for the first match in subject starting from startPos.
 func (re *Regexp) findMatch(subject string, startPos int) *vm {
-	if re.flags&UTF != 0 && (!utf8.ValidString(subject) || (startPos > 0 && startPos < len(subject) && !utf8.RuneStart(subject[startPos]))) {
+	v := re.acquireVM(subject, startPos)
+	ok, _ := re.searchVM(v, subject, startPos, false, false, true)
+	if !ok {
+		re.releaseVM(v)
 		return nil
 	}
-	if startPos < 0 || startPos > len(subject) || (re.flags&NoStartOptimize == 0 && len(subject)-startPos < re.prog.MinLen) {
-		return nil
-	}
-	// If pattern is anchored, only try at startPos
-	if re.prog.AnchorStart {
-		return re.execAt(subject, startPos)
-	}
+	return v
+}
 
-	// Fast path: if we have a literal prefix, use strings.Index to skip ahead
-	if re.flags&NoStartOptimize == 0 && re.prog.Prefix != "" && len(re.prog.Prefix) > 1 {
-		i := startPos
-		var v *vm
-		for {
-			idx := strings.Index(subject[i:], re.prog.Prefix)
+func (re *Regexp) searchVM(v *vm, subject string, start int, anchored, notEmpty, legacy bool) (bool, error) {
+	if start < 0 || start > len(subject) {
+		return false, nil
+	}
+	if re.flags&UTF != 0 && (!utf8.ValidString(subject) || start < len(subject) && !utf8.RuneStart(subject[start])) {
+		return false, ErrInvalidUTF
+	}
+	if re.flags&NoStartOptimize == 0 && len(subject)-start < re.prog.MinLen {
+		return false, nil
+	}
+	v.subject = subject
+	v.steps = 0
+	for pos := start; pos <= len(subject); {
+		if !anchored && !re.prog.AnchorStart && re.flags&NoStartOptimize == 0 && len(re.prog.Prefix) > 1 {
+			idx := strings.Index(subject[pos:], re.prog.Prefix)
 			if idx < 0 {
-				return nil
+				return false, nil
 			}
-			pos := i + idx
-			if v == nil {
-				v = re.newMatchVM(subject, pos)
-			} else {
-				v.resetAttempt(pos)
-			}
-			v.startPos = startPos
-			if v.exec() {
-				return v
-			}
-			if pos >= len(subject) {
-				break
-			}
-			_, size := decodeCharacter(subject[pos:], re.flags)
-			i = pos + size
+			pos += idx
 		}
-		return nil
-	}
 
-	v := re.newMatchVM(subject, startPos)
-	for i := startPos; i <= len(subject); {
-		v.resetAttempt(i)
-		v.startPos = startPos // \G anchors to the search start, not the attempt position
+		// PCRE2 resets match_call_count for each candidate start. Children
+		// share the current attempt's remaining budget through runChild.
+		v.resetAttempt(pos)
+		v.startPos = start
+		v.notEmptyAtStart, v.searchStart = notEmpty, start
 		if v.exec() {
-			return v
+			if v.captures[0] > v.captures[1] {
+				return false, ErrInvalidMatch
+			}
+			return true, nil
 		}
-		if i >= len(subject) {
+		if v.limitErr != nil && !legacy {
+			return false, v.limitErr
+		}
+		if anchored || re.prog.AnchorStart || pos == len(subject) {
 			break
 		}
-		_, size := decodeCharacter(subject[i:], re.flags)
-		i += size
+		_, size := decodeCharacter(subject[pos:], re.flags)
+		pos += size
 	}
-	return nil
+	return false, nil
 }
 
 // resetAttempt reuses captures and stack storage across candidate positions.
@@ -237,7 +235,6 @@ func (v *vm) resetAttempt(pos int) {
 	v.mark = ""
 	v.limitErr = nil
 	v.flags = v.prog.Flags
-	v.nextSubPC = 0
 	v.backtrackPC = 0
 	for i := range v.captures {
 		v.captures[i] = -1

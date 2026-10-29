@@ -466,7 +466,15 @@ func (c *compiler) compileBackref(node *Node) error {
 	if c.caseFold {
 		op = OpBackrefFold
 	}
-	c.emit(Inst{Op: op, N: node.Index, Str: node.Name})
+	index := node.Index
+	if node.Name != "" {
+		groups := c.prog.NameToGroup[node.Name]
+		if len(groups) == 0 {
+			return &CompileError{Offset: node.Pos, Message: "unknown named backreference"}
+		}
+		index = groups[0]
+	}
+	c.emit(Inst{Op: op, N: index, Str: node.Name})
 	return nil
 }
 
@@ -486,6 +494,26 @@ func (c *compiler) compileLookahead(node *Node, negative bool) error {
 }
 
 func (c *compiler) compileLookbehind(node *Node, negative bool) error {
+	if body := node.Children[0]; body.Kind == NdAlternate {
+		branches := make([]*Node, len(body.Children))
+		for i, child := range body.Children {
+			branches[i] = &Node{Kind: node.Kind, Children: []*Node{child}}
+		}
+		if negative {
+			for _, branch := range branches {
+				if err := c.compileLookbehind(branch, true); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		c.emit(Inst{Op: OpAtomicStart})
+		if err := c.compileAlternate(&Node{Kind: NdAlternate, Children: branches}); err != nil {
+			return err
+		}
+		c.emit(Inst{Op: OpAtomicEnd})
+		return nil
+	}
 	startOp := OpLookbehindStart
 	endOp := OpLookbehindEnd
 	if negative {

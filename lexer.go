@@ -207,6 +207,9 @@ func (l *lexer) lexRepeat(startPos int) error {
 	// If it doesn't look like a valid repeat, treat { as literal
 	savedPos := l.pos
 	n, ok := l.parseInt()
+	if !ok && l.peek() == ',' && l.peekAt(1) >= '0' && l.peekAt(1) <= '9' {
+		n, ok = 0, true
+	}
 	if !ok {
 		// Not a valid repeat — treat { as literal
 		l.pos = savedPos - 1
@@ -515,7 +518,7 @@ func (l *lexer) lexBackrefG(startPos int) error {
 		// Could be number (positive, negative, or +relative) or name
 		if len(ref) > 0 && (ref[0] >= '0' && ref[0] <= '9' || ref[0] == '-' || ref[0] == '+') {
 			num := parseSignedInt(ref)
-			l.emit(Token{Kind: TokBackref, Pos: startPos, Num: num, Str: ref})
+			l.emit(Token{Kind: TokBackref, Pos: startPos, Num: num})
 		} else {
 			l.emit(Token{Kind: TokBackref, Pos: startPos, Str: ref})
 		}
@@ -742,6 +745,9 @@ func (l *lexer) lexNamedCapture(startPos int, closer byte) error {
 		return l.errorf(startPos, "unterminated named capture group")
 	}
 	name := l.src[nameStart:l.pos]
+	if name == "" || name[0] >= '0' && name[0] <= '9' {
+		return l.errorf(startPos, "invalid capture group name")
+	}
 	l.pos++ // skip closer
 	l.emit(Token{Kind: TokNamedCapture, Pos: startPos, Str: name})
 	return nil
