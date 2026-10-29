@@ -270,7 +270,17 @@ func (v *vm) execFrom(pc uint32, endPC, targetPos int) bool {
 			pc = inst.Out
 
 		case OpSplit:
-
+			allowed := func(index int) bool {
+				return index == 0 || v.pos < len(v.subject) && byteIn(v.prog.StartSets[index-1], v.subject[v.pos])
+			}
+			if !allowed(inst.First) {
+				pc = inst.Arg
+				continue
+			}
+			if !allowed(inst.Rest) {
+				pc = inst.Out
+				continue
+			}
 			// Greedy: try Out first, save Arg as alternative
 			v.stack.push(stackFrame{
 				kind: frameSplit,

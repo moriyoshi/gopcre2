@@ -196,14 +196,30 @@ func (re *Regexp) searchVM(v *vm, subject string, start int, anchored, notEmpty,
 	v.subject = subject
 	v.steps = 0
 	for pos := start; pos <= len(subject); {
-		if !anchored && !re.prog.AnchorStart && re.flags&NoStartOptimize == 0 && len(re.prog.Prefix) > 1 {
+		if !anchored && !re.prog.AnchorStart && re.flags&NoStartOptimize == 0 && re.prog.Prefix != "" {
 			idx := strings.Index(subject[pos:], re.prog.Prefix)
 			if idx < 0 {
 				return false, nil
 			}
 			pos += idx
 		}
-
+		if !anchored && !re.prog.AnchorStart && re.flags&NoStartOptimize == 0 && re.prog.FirstKnown {
+			if re.prog.FirstByte >= 0 {
+				idx := strings.IndexByte(subject[pos:], byte(re.prog.FirstByte))
+				if idx < 0 {
+					return false, nil
+				}
+				pos += idx
+			} else {
+				for pos < len(subject) && !byteIn(re.prog.First, subject[pos]) {
+					_, size := decodeCharacter(subject[pos:], re.flags)
+					pos += size
+				}
+				if pos == len(subject) {
+					return false, nil
+				}
+			}
+		}
 		// PCRE2 resets match_call_count for each candidate start. Children
 		// share the current attempt's remaining budget through runChild.
 		v.resetAttempt(pos)

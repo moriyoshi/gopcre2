@@ -13,6 +13,11 @@ type Program struct {
 	NameToGroup map[string][]int // name -> group indices (for DUPNAMES)
 	Flags       Flag             // compile-time flags
 
+	StartSets  [][4]uint64 // non-nullable alternation FIRST filters
+	First      [4]uint64
+	FirstKnown bool
+	FirstByte  int // singleton byte, -1 otherwise
+
 	// Optimization hints
 	Prefix      string // literal prefix for fast scan (empty if none)
 	AnchorStart bool   // pattern is anchored at start

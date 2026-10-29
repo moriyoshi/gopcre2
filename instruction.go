@@ -87,13 +87,14 @@ const (
 
 // Inst is a single VM instruction.
 type Inst struct {
-	Op        Opcode
-	Out       uint32         // primary branch / next instruction
-	Arg       uint32         // secondary branch target
-	N         int            // numeric operand (group index, char type, etc.)
-	N2        int            // second numeric operand
-	CharTypes []CharTypeKind // shorthand predicates in OpCharClass
-	Runes     []rune         // for OpRune, OpRuneFold: single rune; for OpCharClass: range pairs [lo,hi,lo,hi,...]
-	Negate    bool           // for OpCharClass: negated class
-	Str       string         // for names, property names, mark names, callout strings
+	First, Rest int // indexes + 1 into Program.StartSets for OpSplit
+	Op          Opcode
+	Out         uint32         // primary branch / next instruction
+	Arg         uint32         // secondary branch target
+	N           int            // numeric operand (group index, char type, etc.)
+	N2          int            // second numeric operand
+	CharTypes   []CharTypeKind // shorthand predicates in OpCharClass
+	Runes       []rune         // for OpRune, OpRuneFold: single rune; for OpCharClass: range pairs [lo,hi,lo,hi,...]
+	Negate      bool           // for OpCharClass: negated class
+	Str         string         // for names, property names, mark names, callout strings
 }

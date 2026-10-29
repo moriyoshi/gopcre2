@@ -5,6 +5,23 @@ import "strings"
 // optimize applies post-compilation optimizations to the program.
 func optimize(prog *Program) {
 	detectAnchor(prog)
+	prog.FirstByte = -1
+	if prog.Flags&NoStartOptimize == 0 && prog.pattern != nil {
+		prog.AnchorStart = prog.AnchorStart || prog.pattern.AnchoredAtStart()
+		prog.First, prog.FirstKnown = prog.pattern.Root().StartBytes()
+		if prog.FirstKnown {
+			count := 0
+			for i := 0; i < 256; i++ {
+				if byteIn(prog.First, byte(i)) {
+					prog.FirstByte = i
+					count++
+				}
+			}
+			if count != 1 {
+				prog.FirstByte = -1
+			}
+		}
+	}
 	extractPrefix(prog)
 	computeMinLen(prog)
 	if prog.pattern != nil {
