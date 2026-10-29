@@ -55,7 +55,21 @@ func TestMatchPHPOptionsAndGlobalRetry(t *testing.T) {
 }
 
 func TestLookaroundReuseAndLimits(t *testing.T) {
-
+	for _, pattern := range []string{`(?<=a)b`, `a(?=b)`, `(?>a)b`, `(?=(?<=a)(b))b`} {
+		r := MustCompile(pattern)
+		m := r.NewMatcher()
+		if n := testing.AllocsPerRun(100, func() {
+			got, err := m.Find("ab", 0, false, false)
+			if err != nil || got == nil {
+				panic("match failed")
+			}
+		}); n != 0 {
+			t.Errorf("%s: %g allocations", pattern, n)
+		}
+		if m.vm.subject != "" || m.vm.child != nil && m.vm.child.subject != "" {
+			t.Fatal("retained subject")
+		}
+	}
 	for _, pattern := range []string{`(?=a)a`, `(?!a)b`, `(?>a)b`, `(?<=a)b`} {
 		r := MustCompile(pattern).SetMatchLimit(2)
 		if _, err := r.MatchPHP("ab", 0, false, false); !errors.Is(err, ErrMatchLimit) {
