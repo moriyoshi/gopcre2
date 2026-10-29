@@ -1,0 +1,22 @@
+{
+  "native_cases": 173,
+  "interpreter_counts": {
+    "equal": 440,
+    "mismatch": 149,
+    "compile_error": 44
+  },
+  "original_cohort_regressions": [],
+  "original_comparable_cases": 142,
+  "median_jit_reuse_ns": 18.72,
+  "median_jit_api_ns": 48.5,
+  "median_jit_reuse_over_native": 1.1042263610315188,
+  "p90_jit_reuse_over_native": 4.589393271632143,
+  "geomean_jit_api_over_native_general": 2.365335565441929,
+  "geomean_jit_api_over_native": 3.3230200244499053,
+  "geomean_jit_reuse_over_native": 1.3373339349491262,
+  "geomean_call_gateway_over_leaf": 2.589365763026794,
+  "geomean_original_over_jit_api": 51.08399897583896,
+  "geomean_original_over_native_same_cohort": 161.98155760300799,
+  "geomean_jit_api_over_native_same_cohort": 3.1708863998611365,
+  "all_reuse_samples_allocation_free": true
+}

@@ -1,0 +1,20 @@
+{
+  "timestamp": "2026-10-28T16:35:48+0900",
+  "cpu": 7,
+  "go": "go version go1.27.2 linux/arm64",
+  "samples": 7,
+  "jit_sample_target": "20ms",
+  "native_sample_target": "3ms",
+  "implementation_sha256": "2786181616b32db715e982c0487c34f3377f5bd5810a56909ccba84a09337f09",
+  "nyanjit_head_at_build": "29aa5790dc7ccd5510dea0d79fafe8ccdb5347db",
+  "nyanjit_head": "29aa5790dc7ccd5510dea0d79fafe8ccdb5347db",
+  "nyanjit_source_sha256": "0406e785f41f8a78f4d44acb1c8e30d36b4dead541214aff168fa80d21b91613",
+  "nyanjit_extension_sha256": {
+    "backend/execution/leaf_func.go": "0a7784437841d6786fff95645556c79612f4b2ee1687a0269fe03dcf070d2428",
+    "backend/execution/leaf_func_linux_test.go": "57a04d1d49155acfee8aa677468823e39c216816d3e9dee9606bb2736b929ea7"
+  },
+  "source_snapshot": "/tmp/gopcre2-ascii-frozen/sources-4c74m_lc",
+  "module_file": "/tmp/gopcre2-ascii-frozen/sources-4c74m_lc/jit.mod",
+  "nyanjit_dirty": true,
+  "implementation_archive_sha256": "f7cc8768a08d2d932d3a35b23299a991665f670570daf8e4ebc13d16c91299e1"
+}

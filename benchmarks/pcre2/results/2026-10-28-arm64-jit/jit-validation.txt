@@ -1,0 +1,4 @@
+=== RUN   TestPCRE2Corpus
+    corpus_test.go:93: PCRE2 corpus: 146 native comparisons, 407 unsupported patterns, 36 non-ASCII subjects, 44 parser rejections
+--- PASS: TestPCRE2Corpus (0.16s)
+PASS

@@ -1,0 +1,62 @@
+{
+  "eloquent": {
+    "before": {
+      "instructions_per_pass": 788407657.57,
+      "ns_per_pass": 73099586.61,
+      "allocs_per_pass": 212566,
+      "bytes_per_pass": 507050160,
+      "matches_per_pass": 259
+    },
+    "pooled": {
+      "instructions_per_pass": 32218511.1,
+      "ns_per_pass": 1892971.89,
+      "allocs_per_pass": 774.47,
+      "bytes_per_pass": 25165.36,
+      "matches_per_pass": 259
+    },
+    "filtered": {
+      "instructions_per_pass": 5148917.505,
+      "ns_per_pass": 293785.3,
+      "allocs_per_pass": 775.325,
+      "bytes_per_pass": 26509.8,
+      "matches_per_pass": 259
+    },
+    "jit": {
+      "instructions_per_pass": 1635366.53,
+      "ns_per_pass": 87359.745,
+      "allocs_per_pass": 774.705,
+      "bytes_per_pass": 25196.04,
+      "matches_per_pass": 259
+    }
+  },
+  "json": {
+    "before": {
+      "instructions_per_pass": 2065670.095,
+      "ns_per_pass": 161267.9,
+      "allocs_per_pass": 536,
+      "bytes_per_pass": 1015104,
+      "matches_per_pass": 35
+    },
+    "pooled": {
+      "instructions_per_pass": 571959.39,
+      "ns_per_pass": 37992.135,
+      "allocs_per_pass": 104.175,
+      "bytes_per_pass": 2693.08,
+      "matches_per_pass": 35
+    },
+    "filtered": {
+      "instructions_per_pass": 532037.29,
+      "ns_per_pass": 33582.955,
+      "allocs_per_pass": 104.175,
+      "bytes_per_pass": 2693.08,
+      "matches_per_pass": 35
+    },
+    "jit": {
+      "instructions_per_pass": 165225.06,
+      "ns_per_pass": 8771.435,
+      "allocs_per_pass": 104.175,
+      "bytes_per_pass": 2693.08,
+      "matches_per_pass": 35
+    }
+  }
+}

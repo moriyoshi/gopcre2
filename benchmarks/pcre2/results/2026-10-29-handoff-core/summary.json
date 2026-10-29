@@ -1,0 +1,21 @@
+{
+  "validation": {
+    "before": {
+      "equal": 440,
+      "mismatch": 149,
+      "compile_error": 44
+    },
+    "after": {
+      "equal": 464,
+      "mismatch": 125,
+      "compile_error": 44
+    }
+  },
+  "cohort": 440,
+  "regressions": [],
+  "geometric_mean_speedup": 5.963086338820337,
+  "median_before_ns": 1013.599609375,
+  "median_after_ns": 203.18820190429688,
+  "median_before_allocs": 5.0,
+  "median_after_allocs": 1.0
+}

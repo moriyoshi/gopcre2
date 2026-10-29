@@ -9,9 +9,10 @@ A pure Go implementation of [PCRE2](https://www.pcre.org/) (Perl Compatible Regu
 No cgo, no external dependencies.
 
 An [experimental optional JIT module](jit/README.md) uses nyanjit to generate
-native matching and backtracking paths. The base package keeps its Go 1.25.3
-requirement and dependency-free interpreter. The optional module requires
-Go 1.26 and the included sibling-backend extension.
+native matching and backtracking paths. It is developed separately from the
+dependency-free base package and currently supports byte-mode matching and an ASCII subset of UTF mode.
+The [php2go handoff report](benchmarks/laravel/README.md) records current fidelity
+fixes, Laravel replay measurements, consumer APIs and remaining coverage gaps.
 
 ## Why?
 
